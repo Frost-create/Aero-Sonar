@@ -212,7 +212,8 @@ function AnimatedAirspace({
           base.z - simTick,
         ];
 
-        const scale = flight.wakeClass === 'SUPER' ? 1.18 : flight.wakeClass === 'HEAVY' ? 0.98 : 0.78;
+        const baseScale = flight.wakeClass === 'SUPER' ? 1.18 : flight.wakeClass === 'HEAVY' ? 0.98 : 0.78;
+        const scale = baseScale * (params.aircraftScale ?? 1.0);
         const bodyColor = isLead ? '#f8fafc' : isFollowing ? '#bae6fd' : '#94a3b8';
         const accentColor = isSelected && hasConflict ? '#ef4444' : isLead ? '#38bdf8' : isFollowing ? '#10b981' : '#64748b';
 
@@ -270,11 +271,11 @@ function AnimatedAirspace({
       {params.showHazardZones && (
         <>
           <mesh>
-            <tubeGeometry args={[leftCurve, 48, 0.26, 12, false]} />
+            <tubeGeometry args={[leftCurve, 48, 0.26 * (params.aircraftScale ?? 1.0), 12, false]} />
             <meshStandardMaterial color={hazardColor} emissive={hazardColor} emissiveIntensity={0.6} transparent opacity={0.32} />
           </mesh>
           <mesh>
-            <tubeGeometry args={[rightCurve, 48, 0.26, 12, false]} />
+            <tubeGeometry args={[rightCurve, 48, 0.26 * (params.aircraftScale ?? 1.0), 12, false]} />
             <meshStandardMaterial color={hazardColor} emissive={hazardColor} emissiveIntensity={0.6} transparent opacity={0.32} />
           </mesh>
           <mesh>

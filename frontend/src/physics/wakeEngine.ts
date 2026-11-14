@@ -42,6 +42,7 @@ export interface SimulationParams {
   voiceEnabled: boolean;
   autoWatchdog: boolean;
   showHazardZones: boolean;
+  aircraftScale: number;
 }
 
 export type MatrixSeverity = 'HIGH' | 'POTENTIAL' | 'MONITOR' | 'CLEAR';
@@ -126,8 +127,9 @@ export function analyzeFlightPair(
   const trajectoryConflict = cpaDistanceNm < params.trajectoryThresholdNm;
 
   // B. Wake-Vortex Encounter (Burnham-Hallock Decay & Drift)
-  const b0 = (Math.PI / 4) * firstSpec.span;
-  const gamma0 = (firstSpec.mass * 9.81) / (1.225 * firstSpec.speed * b0);
+  const scale = params.aircraftScale ?? 1.0;
+  const b0 = (Math.PI / 4) * firstSpec.span * scale;
+  const gamma0 = (firstSpec.mass * scale * 9.81) / (1.225 * firstSpec.speed * b0);
   const wakeAgeSec = Math.max(8, Math.round(dtMin * 60));
   const wakeIntensityGamma = Math.round(gamma0 * Math.exp(-wakeAgeSec / 55));
 
@@ -201,8 +203,9 @@ export function computeLiveWake(
 ): WakeTelemetry {
   const pair = analyzeFlightPair(lead, following, params, appliedOffset);
   const spec = SPECS[lead.wakeClass];
-  const b0 = (Math.PI / 4) * spec.span;
-  const gamma0 = (spec.mass * 9.81) / (1.225 * spec.speed * b0);
+  const scale = params.aircraftScale ?? 1.0;
+  const b0 = (Math.PI / 4) * spec.span * scale;
+  const gamma0 = (spec.mass * scale * 9.81) / (1.225 * spec.speed * b0);
 
   const spacingSaved = Math.max(0, spec.icaoSep - pair.separationNm);
   const extraLandingsHr = Math.round(spacingSaved * 1.6 * 10) / 10;

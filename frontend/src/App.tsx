@@ -34,6 +34,7 @@ export default function App() {
     voiceEnabled: true,
     autoWatchdog: false,
     showHazardZones: true,
+    aircraftScale: 1.0,
   });
 
   const [viewMode, setViewMode] = useState<'3D' | 'STARS'>('3D');
@@ -485,6 +486,25 @@ export default function App() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-400">Aircraft Size / Vortex Scale</span>
+                  <span className="font-mono text-purple-400 font-bold">{params.aircraftScale.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.0}
+                  step={0.05}
+                  value={params.aircraftScale}
+                  onChange={(e) => {
+                    setAgentResponse(null);
+                    setParams({ ...params, aircraftScale: parseFloat(e.target.value) });
+                  }}
+                  className="w-full accent-purple-400"
+                />
               </div>
 
               {feedMode === 'SIM' ? (
