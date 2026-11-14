@@ -31,6 +31,8 @@ export default function App() {
     crosswindKts: 1.5,
     windDirectionDeg: 20,
     windSpeedKts: 10,
+    windDirectionDeg: 20,
+    windSpeedKts: 10,
     offlineEdgeMode: false,
     isPlaying: true,
     voiceEnabled: true,
@@ -262,6 +264,517 @@ export default function App() {
           <div className="p-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
             <Plane className="w-5 h-5 text-cyan-400" />
           </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-extrabold tracking-wider">AERO-SONAR</h1>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                feedMode === 'REALTIME' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+              }`}>
+                {feedMode === 'REALTIME' ? `LIVE ATC (${realtimeStatus})` : 'SIMULATION SANDBOX'}
+              </span>
+            </div>
+            <p className="text-[11px] font-mono text-emerald-500 truncate max-w-md">{liveMetar}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className={`flex border rounded-lg p-1 ${lightMode ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'}`}>
+            <button
+              onClick={() => { setAgentResponse(null); setFeedMode('SIM'); }}
+              className={`px-2.5 py-1 rounded text-[11px] font-mono font-bold transition ${feedMode === 'SIM' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/50' : 'text-slate-400'}`}
+            >
+              SIMULATION
+            </button>
+            <button
+              onClick={() => { setAgentResponse(null); setFeedMode('REALTIME'); }}
+              className={`px-2.5 py-1 rounded text-[11px] font-mono font-bold flex items-center gap-1 transition ${feedMode === 'REALTIME' ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50' : 'text-slate-400'}`}
+            >
+              <Activity className="w-3 h-3" /> REAL-TIME ATC
+            </button>
+          </div>
+
+          <select
+            value={params.airport}
+            onChange={(e) => {
+              setAgentResponse(null);
+              const code = e.target.value as AirportCode;
+              setParams((p) => ({ ...p, airport: code, crosswindKts: AIRPORTS[code].defaultCrosswind }));
+            }}
+            className={`border border-cyan-500/40 text-cyan-400 text-xs font-mono font-bold px-3 py-1.5 rounded-lg outline-none ${lightMode ? 'bg-slate-50' : 'bg-slate-950'}`}
+          >
+            {(Object.keys(AIRPORTS) as AirportCode[]).map((code) => (
+              <option key={code} value={code}>
+                {code} ({AIRPORTS[code].iata}) — RWY {AIRPORTS[code].runway}
+              </option>
+            ))}
+          </select>
+
+          <div className={`flex border rounded-lg p-1 ${lightMode ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-800'}`}>
+            <button
+              onClick={() => setViewMode('3D')}
+              className={`px-2.5 py-1 rounded text-[11px] font-mono font-bold transition ${viewMode === '3D' ? 'bg-cyan-500/25 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`}
+            >
+              3D TWIN + IDS4
+            </button>
+            <button
+              onClick={() => { setIsFullscreen3D(false); setViewMode('STARS'); }}
+              className={`px-2.5 py-1 rounded text-[11px] font-mono font-bold transition ${viewMode === 'STARS' ? 'bg-cyan-500/25 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`}
+            >
+              2D STARS RADAR
+            </button>
+          </div>
+
+          {viewMode === '3D' && (
+            <button
+              onClick={() => setIsFullscreen3D(!isFullscreen3D)}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-mono font-bold border transition ${
+                isFullscreen3D ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300' : 'border-slate-700 text-slate-300 hover:border-cyan-400'
+              }`}
+            >
+              {isFullscreen3D ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              {isFullscreen3D ? 'MINIMIZE' : 'MAXIMIZE'}
+            </button>
+          )}
+
+          <button
+            onClick={() => setLightMode(!lightMode)}
+            className={`p-1.5 rounded-lg border transition ${lightMode ? 'bg-amber-100 border-amber-400 text-amber-700' : 'bg-slate-800 border-slate-700 text-amber-300'}`}
+          >
+            {lightMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => setParams((p) => ({ ...p, autoWatchdog: !p.autoWatchdog }))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold border transition ${
+              params.autoWatchdog ? 'bg-purple-500/25 border-purple-400 text-purple-300' : 'border-slate-700 text-slate-400'
+            }`}
+          >
+            <Radio className="w-3.5 h-3.5" />
+            {params.autoWatchdog ? 'AUTO-AGENT: ON' : 'AUTO-AGENT: OFF'}
+          </button>
+
+          <button
+            onClick={() => setParams((p) => ({ ...p, voiceEnabled: !p.voiceEnabled }))}
+            className={`p-1.5 rounded-lg border ${params.voiceEnabled ? 'bg-purple-500/15 border-purple-500/40 text-purple-400' : 'border-slate-700 text-slate-500'}`}
+          >
+            {params.voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => setParams((p) => ({ ...p, isPlaying: !p.isPlaying }))}
+            className="p-1.5 rounded-lg border border-slate-700 hover:border-cyan-400"
+          >
+            {params.isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => setParams((p) => ({ ...p, offlineEdgeMode: !p.offlineEdgeMode }))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${
+              params.offlineEdgeMode ? 'bg-amber-500/20 border-amber-500 text-amber-400' : 'border-slate-700 text-slate-400'
+            }`}
+          >
+            {params.offlineEdgeMode ? <WifiOff className="w-3.5 h-3.5" /> : <Cpu className="w-3.5 h-3.5 text-cyan-400" />}
+            {params.offlineEdgeMode ? 'EDGE FAILOVER' : 'GEMINI ONLINE'}
+          </button>
+        </div>
+      </header>
+
+      {viewMode === 'STARS' ? (
+        <div className="flex-1 rounded-xl overflow-hidden border border-cyan-900/60">
+          <StarsRadar />
+        </div>
+      ) : isFullscreen3D ? (
+        <div className="relative h-[calc(100vh-92px)] w-full">
+          <AirspaceScene
+            flights={flights}
+            params={params}
+            telemetry={telemetry}
+            recommendedOffset={{
+              lateralM: agentResponse?.recommended_lateral_offset_m ?? 0,
+              altitudeFt: agentResponse?.recommended_altitude_offset_ft ?? 0,
+            }}
+            focusTrigger={focusTrigger}
+            lightMode={lightMode}
+            onSelectFlight={(callsign) => {
+              setAgentResponse(null);
+              setParams((p) => ({
+                ...p,
+                followingFlightId: callsign !== p.leadFlightId ? callsign : p.followingFlightId,
+              }));
+            }}
+            onToggleHazardZones={() => setParams((p) => ({ ...p, showHazardZones: !p.showHazardZones }))}
+          />
+
+          <div className="absolute bottom-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 bg-slate-950/90 backdrop-blur border border-slate-800 px-4 py-2.5 rounded-xl font-mono text-xs">
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <span className="text-[10px] text-slate-400 block">ACTIVE PAIR</span>
+                <span className="font-bold text-cyan-300">{leadFlight.callsign} → {followingFlight.callsign}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">STATUS / RISK</span>
+                <span className={`font-bold ${telemetry.riskCategory === 'CRITICAL' ? 'text-red-400' : telemetry.riskCategory === 'CAUTION' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {telemetry.conflictLabel} ({telemetry.riskScore}%)
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">CPA / WAKE AGE</span>
+                <span className="text-white font-bold">{telemetry.cpaDistanceNm} NM • {telemetry.wakeAgeSec}s</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">ROI SAVED</span>
+                <span className="text-emerald-400 font-bold">+{telemetry.extraLandingsHr} flt/hr • {telemetry.co2SavedKgHr} kg CO₂</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button onClick={triggerAtcAgent} disabled={agentLoading} className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-[11px]">
+                {agentLoading ? 'ANALYZING...' : 'RUN GEMINI ADVISORY'}
+              </button>
+              <button onClick={() => setIsFullscreen3D(false)} className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-bold text-[11px] flex items-center gap-1">
+                <Minimize2 className="w-3.5 h-3.5" /> NORMAL VIEW
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+            <div className={`lg:col-span-3 border rounded-xl p-4 flex flex-col gap-3 ${lightMode ? 'bg-white border-slate-300' : 'bg-slate-900/65 border-slate-800'}`}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-cyan-400">
+                  {feedMode === 'REALTIME' ? 'Live ATC Feed Telemetry' : 'Simulation Parameters'}
+                </h2>
+                <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                  feedMode === 'REALTIME' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {feedMode === 'REALTIME' ? 'AUTO-SYNC' : 'INTERACTIVE'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Lead / Selected Aircraft</label>
+                  <select
+                    value={leadFlight.callsign}
+                    onChange={(e) => {
+                      const newLead = e.target.value;
+                      setAgentResponse(null);
+                      setParams((p) => ({
+                        ...p,
+                        leadFlightId: newLead,
+                        followingFlightId: p.followingFlightId === newLead ? flights.find((f) => f.callsign !== newLead)?.callsign || p.followingFlightId : p.followingFlightId,
+                      }));
+                    }}
+                    className={`w-full border border-cyan-500/40 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold outline-none ${lightMode ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-cyan-300'}`}
+                  >
+                    {flights.map((f) => (
+                      <option key={f.callsign} value={f.callsign}>
+                        {f.callsign} — {f.acType} — {f.wakeClass}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Following / Interacting Aircraft</label>
+                  <select
+                    value={followingFlight.callsign}
+                    onChange={(e) => { setAgentResponse(null); setParams((p) => ({ ...p, followingFlightId: e.target.value })); }}
+                    className={`w-full border border-emerald-500/40 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold outline-none ${lightMode ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-emerald-300'}`}
+                  >
+                    {flights.filter((f) => f.callsign !== leadFlight.callsign).map((f) => (
+                      <option key={f.callsign} value={f.callsign}>
+                        {f.callsign} — {f.acType} — {f.wakeClass}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-400">Aircraft Size / Vortex Scale</span>
+                  <span className="font-mono text-purple-400 font-bold">{params.aircraftScale.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.0}
+                  step={0.05}
+                  value={params.aircraftScale}
+                  onChange={(e) => {
+                    setAgentResponse(null);
+                    setParams({ ...params, aircraftScale: parseFloat(e.target.value) });
+                  }}
+                  className="w-full accent-purple-400"
+                />
+              </div>
+
+              {feedMode === 'SIM' ? (
+                <>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400 flex items-center gap-1"><Wind className="w-3.5 h-3.5 text-cyan-400" /> Wind Direction (360°)</span>
+                      <span className="font-mono text-sky-400 font-bold">{String(params.windDirectionDeg ?? 20).padStart(3, "0")}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={359}
+                      step={5}
+                      value={params.windDirectionDeg ?? 20}
+                      onChange={(e) => {
+                        const deg = parseFloat(e.target.value);
+                        const rwyHdg = AIRPORTS[params.airport].runwayHeading;
+                        const xw = Math.round(Math.abs((params.windSpeedKts ?? 10) * Math.sin(((deg - rwyHdg) * Math.PI) / 180)) * 10) / 10;
+                        setAgentResponse(null);
+                        setParams({ ...params, windDirectionDeg: deg, crosswindKts: xw });
+                      }}
+                      className="w-full accent-sky-400"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400">Wind Speed (360° Vector)</span>
+                      <span className="font-mono text-cyan-400 font-bold">{(params.windSpeedKts ?? 10).toFixed(1)} kts</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={35}
+                      step={0.5}
+                      value={params.windSpeedKts ?? 10}
+                      onChange={(e) => {
+                        const spd = parseFloat(e.target.value);
+                        const rwyHdg = AIRPORTS[params.airport].runwayHeading;
+                        const xw = Math.round(Math.abs(spd * Math.sin((((params.windDirectionDeg ?? 20) - rwyHdg) * Math.PI) / 180)) * 10) / 10;
+                        setAgentResponse(null);
+                        setParams({ ...params, windSpeedKts: spd, crosswindKts: xw });
+                      }}
+                      className="w-full accent-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400">CPA Separation Threshold</span>
+                      <span className="font-mono text-amber-400">{params.trajectoryThresholdNm.toFixed(1)} NM</span>
+                    </div>
+                    <input type="range" min={2.0} max={6.0} step={0.2} value={params.trajectoryThresholdNm} onChange={(e) => { setAgentResponse(null); setParams({ ...params, trajectoryThresholdNm: parseFloat(e.target.value) }); }} className="w-full accent-amber-400" />
+                  </div>
+                    <input type="range" min={2.0} max={6.0} step={0.2} value={params.trajectoryThresholdNm} onChange={(e) => { setAgentResponse(null); setParams({ ...params, trajectoryThresholdNm: parseFloat(e.target.value) }); }} className="w-full accent-amber-400" />
+                  </div>
+                </>
+              ) : (
+                <div className={`border rounded-lg p-3 space-y-1.5 text-[11px] font-mono ${lightMode ? 'bg-emerald-50 border-emerald-300' : 'bg-emerald-950/20 border-emerald-500/30'}`}>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">LIVE METAR X-WIND:</span>
+                    <span className="text-emerald-400 font-bold">{params.crosswindKts.toFixed(1)} KTS</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">FAA/ICAO CPA LIMIT:</span>
+                    <span className="text-cyan-400 font-bold">{params.trajectoryThresholdNm.toFixed(1)} NM</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">STREAM POLLING:</span>
+                    <span className="text-emerald-300 font-bold">EVERY 5 SEC (AUTO)</span>
+                  </div>
+                </div>
+              )}
+
+              <div className={`border rounded-lg p-2.5 ${lightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/90 border-slate-800/80'}`}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Vortex Decay Γ(t)</span>
+                  <span className="text-[10px] font-mono text-cyan-400">Age: {telemetry.wakeAgeSec}s</span>
+                </div>
+                <div className="h-20 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={telemetry.decayCurve}>
+                      <XAxis dataKey="sec" tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={(v) => `${v}s`} />
+                      <YAxis hide domain={[0, 650]} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', fontSize: '11px' }} />
+                      <ReferenceLine y={180} stroke="#10b981" strokeDasharray="3 3" />
+                      <Area type="monotone" dataKey="strength" stroke="#38bdf8" fill="#0284c7" fillOpacity={0.25} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="mt-auto pt-2 border-t border-slate-800/60 space-y-1.5">
+                <h3 className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">Runway & Climate ROI</h3>
+                <div className={`px-3 py-1.5 rounded-lg border flex justify-between items-center ${lightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/90 border-slate-800'}`}>
+                  <span className="text-xs text-slate-400">Throughput Gain</span>
+                  <span className="text-xs font-bold text-emerald-400">+{telemetry.extraLandingsHr} flights/hr</span>
+                </div>
+                <div className={`px-3 py-1.5 rounded-lg border flex justify-between items-center ${lightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/90 border-slate-800'}`}>
+                  <span className="text-xs text-slate-400 flex items-center gap-1"><Leaf className="w-3.5 h-3.5 text-emerald-400" /> CO₂ Prevented</span>
+                  <span className="text-xs font-bold text-emerald-400">{telemetry.co2SavedKgHr} kg/hr</span>
+                </div>
+                <div className={`px-3 py-1.5 rounded-lg border flex justify-between items-center ${lightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/90 border-slate-800'}`}>
+                  <span className="text-xs text-slate-400 flex items-center gap-1"><DollarSign className="w-3.5 h-3.5 text-cyan-400" /> Delay Cost Saved</span>
+                  <span className="text-xs font-bold text-cyan-400">${telemetry.delayCostSavedUsdHr}/hr</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-6 h-[480px]">
+              <AirspaceScene
+                flights={flights}
+                params={params}
+                telemetry={telemetry}
+                recommendedOffset={{
+                  lateralM: agentResponse?.recommended_lateral_offset_m ?? 0,
+                  altitudeFt: agentResponse?.recommended_altitude_offset_ft ?? 0,
+                }}
+                focusTrigger={focusTrigger}
+                lightMode={lightMode}
+                onSelectFlight={(callsign) => {
+                  setAgentResponse(null);
+                  setParams((p) => ({
+                    ...p,
+                    followingFlightId: callsign !== p.leadFlightId ? callsign : p.followingFlightId,
+                  }));
+                }}
+                onToggleHazardZones={() => setParams((p) => ({ ...p, showHazardZones: !p.showHazardZones }))}
+              />
+            </div>
+
+            <div className={`lg:col-span-3 border rounded-xl p-4 flex flex-col gap-3 ${lightMode ? 'bg-white border-slate-300' : 'bg-slate-900/65 border-slate-800'}`}>
+              <h2 className="text-xs font-bold uppercase tracking-widest text-cyan-400">Pair Conflict & Wake Telemetry</h2>
+
+              <div className={`p-3 rounded-xl border transition-all ${
+                telemetry.riskCategory === 'CRITICAL'
+                  ? 'bg-red-950/45 border-red-500/70'
+                  : telemetry.riskCategory === 'CAUTION'
+                  ? 'bg-amber-950/45 border-amber-500/70'
+                  : 'bg-emerald-950/35 border-emerald-500/60'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold flex items-center gap-1"><ShieldAlert className="w-4 h-4" /> {telemetry.conflictLabel}</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-950 text-white">{telemetry.riskCategory}</span>
+                </div>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-2xl font-black font-mono">{telemetry.riskScore}%</span>
+                  <span className="text-[10px] font-mono text-slate-300">{leadFlight.callsign} vs {followingFlight.callsign}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className={`p-2 rounded-lg border ${lightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <span className="text-slate-400 text-[9px] block">A. TRAJECTORY CPA</span>
+                  <span className={`font-mono font-bold ${telemetry.trajectoryConflict ? 'text-red-400' : 'text-cyan-400'}`}>
+                    {telemetry.cpaDistanceNm} NM ({telemetry.timeToCpaSec}s)
+                  </span>
+                </div>
+                <div className={`p-2 rounded-lg border ${lightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <span className="text-slate-400 text-[9px] block">B. WAKE INTENSITY</span>
+                  <span className={`font-mono font-bold ${telemetry.wakeEncounter ? 'text-amber-400' : 'text-cyan-400'}`}>
+                    {telemetry.wakeIntensityGamma} m²/s ({telemetry.wakeAgeSec}s)
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800/60 flex-1 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Gemini ATC Agent</h3>
+                  {agentResponse && (
+                    <button onClick={() => setAgentResponse(null)} className="text-[10px] text-slate-400 hover:text-cyan-400 flex items-center gap-1">
+                      <RotateCcw className="w-3 h-3" /> Reset
+                    </button>
+                  )}
+                </div>
+
+                <button onClick={triggerAtcAgent} disabled={agentLoading} className="w-full py-2 px-4 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-xs font-bold tracking-wide text-white shadow-lg transition disabled:opacity-50">
+                  {agentLoading ? 'ANALYZING PAIR CONFLICT...' : 'ANALYZE CONFLICT & TRAJECTORY'}
+                </button>
+
+                {agentResponse ? (
+                  <div className={`border rounded-lg p-2.5 space-y-1.5 text-xs overflow-y-auto flex-1 ${lightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">{agentResponse.mode}</span>
+                    <p className="leading-relaxed font-medium text-[11px]">{agentResponse.atc_advisory}</p>
+                    <div className="pt-1.5 border-t border-slate-800/60 space-y-1">
+                      {agentResponse.tool_trace.map((step, i) => (
+                        <div key={i} className="text-[10px] font-mono text-cyan-400">→ {step}</div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border border-dashed border-slate-700 rounded-lg p-2.5 text-[11px] text-slate-400 leading-relaxed">
+                    Click above to run conflict analysis for <strong>{leadFlight.callsign}</strong> & <strong>{followingFlight.callsign}</strong>. Advisories require controller approval.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <TowerWorkstation
+            airport={params.airport}
+            flights={flights}
+            matrixAnalyses={matrixAnalyses}
+            selectedLeadId={leadFlight.callsign}
+            selectedFollowingId={followingFlight.callsign}
+            crosswindKts={params.crosswindKts}
+            telemetry={telemetry}
+            lightMode={lightMode}
+            onUpdateArrivalTime={handleUpdateArrivalTime}
+            onReorderFlight={handleReorderFlight}
+            onToggleRunway={handleToggleRunway}
+            onSelectPairFromMatrix={(leadId, followingId) => {
+              setAgentResponse(null);
+              setParams((p) => ({ ...p, leadFlightId: leadId, followingFlightId: followingId }));
+              setFocusTrigger((n) => n + 1);
+            }}
+            onOptimizeQueue={handleOptimizeQueue}
+          />
+        </>
+      )}
+    </div>
+  );
+}<div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400 flex items-center gap-1"><Wind className="w-3.5 h-3.5 text-cyan-400" /> Wind Direction (360°)</span>
+                      <span className="font-mono text-sky-400 font-bold">{String(params.windDirectionDeg ?? 20).padStart(3, "0")}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={359}
+                      step={5}
+                      value={params.windDirectionDeg ?? 20}
+                      onChange={(e) => {
+                        const deg = parseFloat(e.target.value);
+                        const rwyHdg = AIRPORTS[params.airport].runwayHeading;
+                        const xw = Math.round(Math.abs((params.windSpeedKts ?? 10) * Math.sin(((deg - rwyHdg) * Math.PI) / 180)) * 10) / 10;
+                        setAgentResponse(null);
+                        setParams({ ...params, windDirectionDeg: deg, crosswindKts: xw });
+                      }}
+                      className="w-full accent-sky-400"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400">Wind Speed (360° Vector)</span>
+                      <span className="font-mono text-cyan-400 font-bold">{(params.windSpeedKts ?? 10).toFixed(1)} kts</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={35}
+                      step={0.5}
+                      value={params.windSpeedKts ?? 10}
+                      onChange={(e) => {
+                        const spd = parseFloat(e.target.value);
+                        const rwyHdg = AIRPORTS[params.airport].runwayHeading;
+                        const xw = Math.round(Math.abs(spd * Math.sin((((params.windDirectionDeg ?? 20) - rwyHdg) * Math.PI) / 180)) * 10) / 10;
+                        setAgentResponse(null);
+                        setParams({ ...params, windSpeedKts: spd, crosswindKts: xw });
+                      }}
+                      className="w-full accent-cyan-400"
+                    />
+                  </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-extrabold tracking-wider">AERO-SONAR</h1>
