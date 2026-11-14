@@ -29,6 +29,7 @@ export default function App() {
     followingFlightId: 'DAL1428',
     trajectoryThresholdNm: 3.0,
     crosswindKts: 1.5,
+    windAngleDeg: 90,
     windDirectionDeg: 20,
     windSpeedKts: 10,
     windDirectionDeg: 20,
@@ -554,6 +555,25 @@ export default function App() {
                         setParams({ ...params, windSpeedKts: spd, crosswindKts: xw });
                       }}
                       className="w-full accent-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-400">Wind Direction (180° Left ↔ Right)</span>
+                      <span className="font-mono text-sky-400 font-bold">{(params.windAngleDeg ?? 90) > 0 ? `+${params.windAngleDeg ?? 90}° (R)` : (params.windAngleDeg ?? 90) < 0 ? `${params.windAngleDeg}° (L)` : "0° (HEAD)"}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-90}
+                      max={90}
+                      step={5}
+                      value={params.windAngleDeg ?? 90}
+                      onChange={(e) => {
+                        setAgentResponse(null);
+                        setParams({ ...params, windAngleDeg: parseFloat(e.target.value) });
+                      }}
+                      className="w-full accent-sky-400"
                     />
                   </div>
 

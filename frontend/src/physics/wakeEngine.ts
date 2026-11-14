@@ -37,6 +37,7 @@ export interface SimulationParams {
   followingFlightId: string;
   trajectoryThresholdNm: number;
   crosswindKts: number;
+  windAngleDeg: number;
   windDirectionDeg: number;
   windSpeedKts: number;
   offlineEdgeMode: boolean;

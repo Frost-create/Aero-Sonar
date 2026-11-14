@@ -55,7 +55,7 @@ function WindParticles({ signedCrosswindKts, headwindKts, isPlaying }: { signedC
     });
   });
 
-  if (Math.hypot(signedCrosswindKts, headwindKts) <= 0.3) return null;
+  if (Math.hypot(signedCrosswindKts, headwindKts) <= 0.2) return null;
   const angleY = Math.atan2(signedCrosswindKts, headwindKts);
 
   return (
@@ -68,51 +68,6 @@ function WindParticles({ signedCrosswindKts, headwindKts, isPlaying }: { signedC
       ))}
     </group>
   );
-}
-
-// Procedural flush airline fuselage texture (no external sleeves/pipes)
-function useFuselageTexture(primaryHex: string, secondaryHex: string) {
-  return useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d')!;
-
-    // Pure Pearl-White Airliner Base
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, 512, 512);
-
-    // Subtle metallic belly shading
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(0, 0, 145, 512);
-    ctx.fillRect(367, 0, 145, 512);
-
-    // Subtle refined cheatline stripes painted directly onto fuselage skin
-    // In LatheGeometry rotated [Math.PI/2, 0, 0], V goes nose->tail (top->bottom of canvas), U wraps around circumference
-    const drawSideStripes = (centerX: number) => {
-      // Thin refined primary stripe (Cobalt Blue / Emerald / Crimson)
-      ctx.fillStyle = primaryHex;
-      ctx.fillRect(centerX - 6, 75, 7, 360);
-
-      // Hairline warm gold/yellow accent pinstripe right below it
-      ctx.fillStyle = secondaryHex;
-      ctx.fillRect(centerX + 3, 75, 3, 360);
-
-      // Passenger cabin windows row
-      ctx.fillStyle = '#1e293b';
-      for (let y = 95; y <= 410; y += 11) {
-        ctx.fillRect(centerX - 13, y, 4, 5);
-      }
-    };
-
-    // Port & Starboard sides on cylinder UV wrap
-    drawSideStripes(128);
-    drawSideStripes(384);
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.anisotropy = 4;
-    return tex;
-  }, [primaryHex, secondaryHex]);
 }
 
 function AircraftMesh({
@@ -137,8 +92,8 @@ function AircraftMesh({
   onClick: () => void;
 }) {
   const ringRef = useRef<THREE.Mesh>(null);
-  const fuselageTexture = useFuselageTexture(primaryColor, secondaryColor);
 
+  // Vertex-painted sculpted fuselage: subtle stripes painted directly into the mesh geometry (zero external pipes)
   const fuselageGeo = useMemo(() => {
     const pts = [
       new THREE.Vector2(0.001, -1.72),
@@ -150,8 +105,37 @@ function AircraftMesh({
       new THREE.Vector2(0.075, 1.50),
       new THREE.Vector2(0.02, 1.68),
     ];
-    return new THREE.LatheGeometry(pts, 36);
-  }, []);
+    const geo = new THREE.LatheGeometry(pts, 48);
+    const posAttr = geo.attributes.position;
+    const colors = new Float32Array(posAttr.count * 3);
+
+    const white = new THREE.Color('#f8fafc');
+    const belly = new THREE.Color('#cbd5e1');
+    const c1 = new THREE.Color(primaryColor);
+    const c2 = new THREE.Color(secondaryColor);
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i); // Vertical axis after Math.PI/2 X-rotation
+      const y = posAttr.getY(i); // Longitudinal axis (-1.72 nose to +1.68 tail)
+      let col = white;
+
+      // Subtle belly tone
+      if (x < -0.05) col = belly;
+
+      // Subtle cheatline stripes painted directly on fuselage sides between nose & tail
+      if (y > -1.05 && y < 1.15) {
+        if (x >= 0.005 && x <= 0.032) col = c1;
+        else if (x >= -0.015 && x < 0.005) col = c2;
+      }
+
+      colors[i * 3] = col.r;
+      colors[i * 3 + 1] = col.g;
+      colors[i * 3 + 2] = col.b;
+    }
+
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return geo;
+  }, [primaryColor, secondaryColor]);
 
   const tailFinGeo = useMemo(() => {
     const shape = new THREE.Shape();
@@ -161,7 +145,7 @@ function AircraftMesh({
     shape.lineTo(0.52, 0.54);
     shape.closePath();
     return new THREE.ExtrudeGeometry(shape, {
-      depth: 0.028,
+      depth: 0.026,
       bevelEnabled: true,
       bevelThickness: 0.005,
       bevelSize: 0.005,
@@ -177,7 +161,7 @@ function AircraftMesh({
     shape.lineTo(0, 0.24);
     shape.closePath();
     return new THREE.ExtrudeGeometry(shape, {
-      depth: 0.024,
+      depth: 0.022,
       bevelEnabled: true,
       bevelThickness: 0.005,
       bevelSize: 0.005,
@@ -204,12 +188,12 @@ function AircraftMesh({
         onClick();
       }}
     >
-      {/* Seamless Painted Fuselage (No Overlapping Pipe/Cylinder Sleeves) */}
+      {/* Single Seamless Vertex-Painted Airliner Fuselage */}
       <mesh geometry={fuselageGeo} rotation={[Math.PI / 2, 0, 0]}>
-        <meshStandardMaterial map={fuselageTexture} metalness={0.22} roughness={0.22} />
+        <meshStandardMaterial vertexColors metalness={0.22} roughness={0.24} />
       </mesh>
 
-      {/* Flush Dark Sapphire Cockpit Windshield */}
+      {/* Subtle Sapphire Cockpit Windshield */}
       <mesh position={[0, 0.088, -1.30]} rotation={[0.48, 0, 0]}>
         <cylinderGeometry args={[0.146, 0.166, 0.13, 24, 1, false, -Math.PI * 0.35, Math.PI * 0.70]} />
         <meshStandardMaterial color="#1e3a8a" metalness={0.85} roughness={0.12} />
@@ -225,29 +209,29 @@ function AircraftMesh({
 
       {/* Subtle Painted Blended Winglets */}
       <mesh position={[2.19, 0.07, 0.44]} rotation={[0.15, 0, -0.35]}>
-        <boxGeometry args={[0.024, 0.23, 0.12]} />
+        <boxGeometry args={[0.022, 0.22, 0.11]} />
         <meshStandardMaterial color={primaryColor} />
       </mesh>
       <mesh position={[-2.19, 0.07, 0.44]} rotation={[0.15, 0, 0.35]}>
-        <boxGeometry args={[0.024, 0.23, 0.12]} />
+        <boxGeometry args={[0.022, 0.22, 0.11]} />
         <meshStandardMaterial color={primaryColor} />
       </mesh>
 
-      {/* White Turbofan Nacelles with Subtle Metallic Intake Rings */}
+      {/* White Turbofan Nacelles with Subtle Gold Trim Rings */}
       {engineOffsets.map((engX, idx) => {
         const zSweep = Math.abs(engX) * 0.26 - 0.18;
         return (
           <group key={idx} position={[engX, -0.14, zSweep]}>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.092, 0.082, 0.44, 20]} />
+              <cylinderGeometry args={[0.09, 0.08, 0.44, 20]} />
               <meshStandardMaterial color="#f8fafc" metalness={0.35} roughness={0.22} />
             </mesh>
             <mesh position={[0, 0, -0.225]} rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[0.088, 0.011, 10, 24]} />
+              <torusGeometry args={[0.086, 0.01, 10, 24]} />
               <meshStandardMaterial color={secondaryColor} metalness={0.8} roughness={0.18} />
             </mesh>
             <mesh position={[0, 0, -0.21]}>
-              <circleGeometry args={[0.08, 16]} />
+              <circleGeometry args={[0.078, 16]} />
               <meshStandardMaterial color="#334155" metalness={0.7} roughness={0.25} />
             </mesh>
           </group>
@@ -255,24 +239,24 @@ function AircraftMesh({
       })}
 
       {/* Sleek Swept Vertical Tail Fin */}
-      <mesh geometry={tailFinGeo} position={[-0.014, 0.06, 0.92]} rotation={[0, -Math.PI / 2, 0]}>
+      <mesh geometry={tailFinGeo} position={[-0.013, 0.06, 0.92]} rotation={[0, -Math.PI / 2, 0]}>
         <meshStandardMaterial color={primaryColor} metalness={0.25} roughness={0.28} />
       </mesh>
 
       {/* Horizontal Tail Stabilizers */}
       <mesh position={[0.42, 0.04, 1.38]} rotation={[0, -0.35, 0]}>
-        <boxGeometry args={[0.74, 0.022, 0.2]} />
+        <boxGeometry args={[0.74, 0.02, 0.2]} />
         <meshStandardMaterial color="#e2e8f0" metalness={0.35} roughness={0.3} />
       </mesh>
       <mesh position={[-0.42, 0.04, 1.38]} rotation={[0, 0.35, 0]}>
-        <boxGeometry args={[0.74, 0.022, 0.2]} />
+        <boxGeometry args={[0.74, 0.02, 0.2]} />
         <meshStandardMaterial color="#e2e8f0" metalness={0.35} roughness={0.3} />
       </mesh>
 
       {/* Selection / Conflict Ring */}
       {(isSelected || isConflict) && (
         <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[2.35, 0.025, 10, 48]} />
+          <torusGeometry args={[2.35, 0.024, 10, 48]} />
           <meshBasicMaterial color={isConflict ? '#ef4444' : '#38bdf8'} transparent opacity={0.65} />
         </mesh>
       )}
@@ -306,7 +290,6 @@ function AnimatedAirspace({
 
   const wakeTrailLength = Math.min(5.2, Math.max(2.8, telemetry.separationNm * 1.1));
 
-  // Signed lateralDriftM now drifts LEFT (-) or RIGHT (+) based on 360° wind angle!
   const { leftPoints, rightPoints } = useMemo(() => {
     const lPts: [number, number, number][] = [];
     const rPts: [number, number, number][] = [];
@@ -461,11 +444,9 @@ export default function AirspaceScene({
     if (focusTrigger > 0) setCameraPreset('FOCUS');
   }, [focusTrigger]);
 
-  const windDir = params.windDirectionDeg ?? (airportSpec.runwayHeading + 90) % 360;
-  const windSpd = params.windSpeedKts ?? params.crosswindKts;
-  const relRad = ((windDir - airportSpec.runwayHeading) * Math.PI) / 180;
-  const signedCrosswindKts = Math.round(windSpd * Math.sin(relRad) * 10) / 10;
-  const headwindKts = Math.round(windSpd * Math.cos(relRad) * 10) / 10;
+  const angleRad = ((params.windAngleDeg ?? 90) * Math.PI) / 180;
+  const signedCrosswindKts = Math.round(params.crosswindKts * Math.sin(angleRad) * 10) / 10;
+  const headwindKts = Math.round(params.crosswindKts * Math.cos(angleRad) * 10) / 10;
 
   return (
     <div className={`w-full h-full rounded-xl overflow-hidden border relative ${lightMode ? 'bg-slate-200 border-slate-300' : 'bg-[#040812] border-slate-800'}`}>
@@ -493,8 +474,6 @@ export default function AirspaceScene({
 
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2 bg-slate-950/85 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-lg text-[11px] font-mono">
         <span className="text-amber-300 font-bold">{airportSpec.code} RWY {airportSpec.runway}</span>
-        <span className="text-slate-600">|</span>
-        <span className="text-sky-300">WIND: {String(Math.round(windDir)).padStart(3, '0')}° @ {windSpd.toFixed(0)}KT</span>
         <span className="text-slate-600">|</span>
         <span className="text-cyan-300">
           X-WIND: {Math.abs(signedCrosswindKts).toFixed(1)}KT {signedCrosswindKts > 0.2 ? '→ (R)' : signedCrosswindKts < -0.2 ? '← (L)' : ''}
