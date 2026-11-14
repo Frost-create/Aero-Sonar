@@ -66,8 +66,9 @@ function WindParticles({ crosswindKts, isPlaying }: { crosswindKts: number; isPl
 function AircraftMesh({
   position,
   scale = 1,
-  bodyColor,
-  accentColor,
+  fuselageColor,
+  liveryColor,
+  wingColor,
   isSelected,
   isConflict,
   bankAngle = 0,
@@ -75,18 +76,25 @@ function AircraftMesh({
 }: {
   position: [number, number, number];
   scale?: number;
-  bodyColor: string;
-  accentColor: string;
+  fuselageColor: string;
+  liveryColor: string;
+  wingColor: string;
   isSelected: boolean;
   isConflict: boolean;
   bankAngle?: number;
   onClick: () => void;
 }) {
   const ringRef = useRef<THREE.Mesh>(null);
+  const beaconRef = useRef<THREE.Mesh>(null);
+
   useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
     if (ringRef.current) {
-      const s = 1 + Math.sin(clock.getElapsedTime() * 6) * 0.12;
+      const s = 1 + Math.sin(t * 5) * 0.08;
       ringRef.current.scale.set(s, s, s);
+    }
+    if (beaconRef.current) {
+      beaconRef.current.visible = Math.sin(t * 8) > 0.3;
     }
   });
 
@@ -100,29 +108,109 @@ function AircraftMesh({
         onClick();
       }}
     >
+      {/* Main Contoured Cylindrical Cabin */}
       <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.16, 0.13, 2.4, 20]} />
-        <meshStandardMaterial color={bodyColor} metalness={0.65} roughness={0.25} />
+        <cylinderGeometry args={[0.21, 0.19, 2.35, 24]} />
+        <meshStandardMaterial color={fuselageColor} metalness={0.45} roughness={0.22} />
       </mesh>
-      <mesh position={[0, -0.02, -1.35]} rotation={[-Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.16, 0.45, 20]} />
-        <meshStandardMaterial color={bodyColor} metalness={0.65} roughness={0.25} />
+
+      {/* High-Contrast Airline Cheatline / Belly Stripe */}
+      <mesh position={[0, -0.04, 0.05]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.214, 0.194, 2.2, 24]} />
+        <meshStandardMaterial color={liveryColor} metalness={0.35} roughness={0.3} />
       </mesh>
-      <mesh position={[-0.85, -0.02, 0.15]} rotation={[0, 0.28, -0.04]}>
-        <boxGeometry args={[1.65, 0.04, 0.42]} />
-        <meshStandardMaterial color={bodyColor} />
+
+      {/* Aerodynamic Radome Nose Cone */}
+      <mesh position={[0, -0.02, -1.38]} rotation={[-Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[0.21, 0.48, 24]} />
+        <meshStandardMaterial color={fuselageColor} metalness={0.45} roughness={0.22} />
       </mesh>
-      <mesh position={[0.85, -0.02, 0.15]} rotation={[0, -0.28, 0.04]}>
-        <boxGeometry args={[1.65, 0.04, 0.42]} />
-        <meshStandardMaterial color={bodyColor} />
+
+      {/* Dark Tinted Cockpit Windshield */}
+      <mesh position={[0, 0.11, -1.16]} rotation={[0.42, 0, 0]}>
+        <boxGeometry args={[0.24, 0.09, 0.22]} />
+        <meshStandardMaterial color="#090d16" metalness={0.9} roughness={0.1} />
       </mesh>
-      <mesh position={[0, 0.36, 0.98]} rotation={[-0.25, 0, 0]}>
-        <boxGeometry args={[0.05, 0.65, 0.35]} />
-        <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={0.45} />
+
+      {/* Tapering Tail Cone */}
+      <mesh position={[0, 0.03, 1.45]} rotation={[Math.PI / 2.15, 0, 0]}>
+        <coneGeometry args={[0.19, 0.65, 24]} />
+        <meshStandardMaterial color={liveryColor} metalness={0.4} roughness={0.28} />
       </mesh>
+
+      {/* Swept Left & Right Main Airfoil Wings */}
+      <mesh position={[-0.95, -0.04, 0.08]} rotation={[0.02, 0.34, -0.05]}>
+        <boxGeometry args={[1.85, 0.045, 0.48]} />
+        <meshStandardMaterial color={wingColor} metalness={0.5} roughness={0.3} />
+      </mesh>
+      <mesh position={[0.95, -0.04, 0.08]} rotation={[0.02, -0.34, 0.05]}>
+        <boxGeometry args={[1.85, 0.045, 0.48]} />
+        <meshStandardMaterial color={wingColor} metalness={0.5} roughness={0.3} />
+      </mesh>
+
+      {/* Angled Blended Winglets + Nav Lights (Red Port / Green Starboard) */}
+      <mesh position={[-1.84, 0.08, 0.39]} rotation={[0, 0.34, 0.45]}>
+        <boxGeometry args={[0.04, 0.26, 0.16]} />
+        <meshStandardMaterial color={liveryColor} emissive={liveryColor} emissiveIntensity={0.4} />
+      </mesh>
+      <mesh position={[-1.88, 0.18, 0.39]}>
+        <sphereGeometry args={[0.04, 8, 8]} />
+        <meshBasicMaterial color="#ef4444" />
+      </mesh>
+
+      <mesh position={[1.84, 0.08, 0.39]} rotation={[0, -0.34, -0.45]}>
+        <boxGeometry args={[0.04, 0.26, 0.16]} />
+        <meshStandardMaterial color={liveryColor} emissive={liveryColor} emissiveIntensity={0.4} />
+      </mesh>
+      <mesh position={[1.88, 0.18, 0.39]}>
+        <sphereGeometry args={[0.04, 8, 8]} />
+        <meshBasicMaterial color="#10b981" />
+      </mesh>
+
+      {/* Twin Underwing Turbofan Engine Nacelles */}
+      {[-0.68, 0.68].map((engX, i) => (
+        <group key={i} position={[engX, -0.17, -0.14]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.12, 0.11, 0.56, 18]} />
+            <meshStandardMaterial color={fuselageColor} metalness={0.7} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 0, -0.29]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.11, 0.018, 10, 20]} />
+            <meshStandardMaterial color="#e2e8f0" metalness={0.9} roughness={0.1} />
+          </mesh>
+          <mesh position={[0, 0, -0.27]}>
+            <sphereGeometry args={[0.095, 12, 12]} />
+            <meshBasicMaterial color="#38bdf8" />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Swept Vertical Tail Fin (Empennage) */}
+      <mesh position={[0, 0.44, 1.28]} rotation={[-0.36, 0, 0]}>
+        <boxGeometry args={[0.055, 0.78, 0.44]} />
+        <meshStandardMaterial color={liveryColor} emissive={liveryColor} emissiveIntensity={0.35} />
+      </mesh>
+
+      {/* Left & Right Horizontal Tail Stabilizers */}
+      <mesh position={[-0.45, 0.08, 1.38]} rotation={[0, 0.32, 0]}>
+        <boxGeometry args={[0.78, 0.035, 0.24]} />
+        <meshStandardMaterial color={wingColor} metalness={0.5} roughness={0.3} />
+      </mesh>
+      <mesh position={[0.45, 0.08, 1.38]} rotation={[0, -0.32, 0]}>
+        <boxGeometry args={[0.78, 0.035, 0.24]} />
+        <meshStandardMaterial color={wingColor} metalness={0.5} roughness={0.3} />
+      </mesh>
+
+      {/* Flashing Anti-Collision Beacon */}
+      <mesh ref={beaconRef} position={[0, 0.23, 0.05]}>
+        <sphereGeometry args={[0.045, 8, 8]} />
+        <meshBasicMaterial color="#f97316" />
+      </mesh>
+
+      {/* Selection / Conflict Halo */}
       {(isSelected || isConflict) && (
         <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[1.85, 0.035, 12, 36]} />
+          <torusGeometry args={[2.15, 0.04, 12, 42]} />
           <meshBasicMaterial color={isConflict ? '#ef4444' : '#38bdf8'} transparent opacity={0.85} />
         </mesh>
       )}
@@ -196,7 +284,6 @@ function AnimatedAirspace({
 
   return (
     <group>
-      {/* Render All Active Flights from Shared Flight Dataset */}
       {flights.map((flight) => {
         const base = getFlightState3D(flight, airportSpec.runway);
         const isLead = flight.callsign === leadFlight.callsign;
@@ -214,10 +301,21 @@ function AnimatedAirspace({
 
         const baseScale = flight.wakeClass === 'SUPER' ? 1.18 : flight.wakeClass === 'HEAVY' ? 0.98 : 0.78;
         const scale = baseScale * (params.aircraftScale ?? 1.0);
-        const bodyColor = isLead ? '#f8fafc' : isFollowing ? '#bae6fd' : '#94a3b8';
-        const accentColor = isSelected && hasConflict ? '#ef4444' : isLead ? '#38bdf8' : isFollowing ? '#10b981' : '#64748b';
 
-        // Projected flight path line toward runway threshold or departure climb
+        // High-contrast airline liveries for crisp visibility against dark or light skies
+        const fuselageColor = '#ffffff';
+        const liveryColor =
+          isSelected && hasConflict
+            ? '#ef4444' // Crimson Alert
+            : isLead
+            ? '#0284c7' // United Cobalt Blue
+            : isFollowing
+            ? '#10b981' // Emerald Approach
+            : flight.wakeClass === 'HEAVY'
+            ? '#f59e0b' // Amber Gold
+            : '#a855f7'; // Violet Regional
+        const wingColor = '#cbd5e1';
+
         const pathEnd: [number, number, number] =
           flight.opType === 'DEP'
             ? [pos[0], pos[1] + 2.5, pos[2] - 12]
@@ -228,37 +326,36 @@ function AnimatedAirspace({
             <AircraftMesh
               position={pos}
               scale={scale}
-              bodyColor={bodyColor}
-              accentColor={accentColor}
+              fuselageColor={fuselageColor}
+              liveryColor={liveryColor}
+              wingColor={wingColor}
               isSelected={isSelected}
               isConflict={isSelected && hasConflict}
               bankAngle={isFollowing && isOffsetActive ? 0.14 : 0}
               onClick={() => onSelectFlight(flight.callsign)}
             />
 
-            {/* Callsign & ETA Label */}
-            <Html position={[pos[0], pos[1] + 1.15, pos[2]]} center>
+            <Html position={[pos[0], pos[1] + 1.25 * scale, pos[2]]} center>
               <button
                 onClick={() => onSelectFlight(flight.callsign)}
                 className={`px-2 py-0.5 rounded text-[10px] font-mono border shadow whitespace-nowrap transition ${
                   isSelected && hasConflict
                     ? 'bg-red-950/95 text-red-200 border-red-500 font-bold'
                     : isLead
-                    ? 'bg-cyan-950/95 text-cyan-200 border-cyan-400 font-bold'
+                    ? 'bg-sky-950/95 text-sky-200 border-sky-400 font-bold'
                     : isFollowing
                     ? 'bg-emerald-950/95 text-emerald-200 border-emerald-400 font-bold'
-                    : 'bg-slate-950/85 text-slate-300 border-slate-700'
+                    : 'bg-slate-950/90 text-amber-200 border-amber-500/50'
                 }`}
               >
-                {flight.callsign} • ETA +{flight.arrivalMinutes.toFixed(1)}m
+                {flight.callsign} • {flight.acType} • +{flight.arrivalMinutes.toFixed(1)}m
               </button>
             </Html>
 
-            {/* Projected Flight Path Line */}
             <Line
               points={[pos, pathEnd]}
-              color={isLead ? '#38bdf8' : isFollowing ? '#10b981' : '#475569'}
-              lineWidth={isSelected ? 2 : 1}
+              color={liveryColor}
+              lineWidth={isSelected ? 2.2 : 1.1}
               dashed
               dashSize={0.45}
               gapSize={0.3}
@@ -267,7 +364,6 @@ function AnimatedAirspace({
         );
       })}
 
-      {/* Wake Vortex Hazard Tubes Behind Lead Aircraft */}
       {params.showHazardZones && (
         <>
           <mesh>
@@ -289,7 +385,6 @@ function AnimatedAirspace({
         </>
       )}
 
-      {/* Predicted Encounter Point Marker */}
       {hasConflict && (
         <group position={[telemetry.encounterPoint3D[0], telemetry.encounterPoint3D[1], telemetry.encounterPoint3D[2] - simTick]}>
           <mesh>
@@ -357,8 +452,9 @@ export default function AirspaceScene({
       <Canvas camera={{ position: [12.5, 7.8, 12.5], fov: 44 }}>
         <color attach="background" args={[lightMode ? '#cbd5e1' : '#040812']} />
         <fog attach="fog" args={[lightMode ? '#cbd5e1' : '#040812', 24, 58]} />
-        <ambientLight intensity={lightMode ? 1.1 : 0.75} />
-        <directionalLight position={[12, 18, 10]} intensity={1.6} color="#e0f2fe" />
+        <ambientLight intensity={lightMode ? 1.25 : 0.95} />
+        <directionalLight position={[12, 18, 10]} intensity={1.8} color="#f8fafc" />
+        <pointLight position={[-8, 6, 8]} intensity={0.8} color="#38bdf8" />
         <CameraController preset={cameraPreset} encounterPoint={telemetry.encounterPoint3D} />
         <WindParticles crosswindKts={params.crosswindKts} isPlaying={params.isPlaying} />
 
