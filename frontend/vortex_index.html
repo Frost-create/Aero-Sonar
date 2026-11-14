@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wake Turbulence 3D Particle Visualizer</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #0d1117;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #info-panel {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      color: #ffffff;
+      background: rgba(13, 17, 23, 0.85);
+      border: 1px solid #30363d;
+      padding: 12px 18px;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    h3 { margin: 0 0 6px 0; font-size: 16px; color: #58a6ff; }
+    p { margin: 3px 0; font-size: 13px; color: #8b949e; }
+  </style>
+
+  <!-- Import Three.js via CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="info-panel">
+    <h3>Airplane Wake Turbulence 3D Model</h3>
+    <p>Red: Severe Roll Hazard (&gt;10 m/s) | Yellow: Moderate | Blue: Safe</p>
+    <p>Left-click + drag to rotate camera | Scroll to zoom</p>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ==========================================
+    // 1. SETUP STAGE: Scene, Camera, & Renderer
+    // ==========================================
+    const scene = new THREE.Scene();
+
+    // Camera: Field of View (60°), Aspect Ratio, Near plane (0.1m), Far plane (1000m)
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 30, 80); // Placed behind and slightly above the runway
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    // OrbitControls allow you to click & drag with the mouse to inspect in 3D
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // Add a simple runway grid on the ground (Z = 0)
+    const grid = new THREE.GridHelper(160, 32, 0x58a6ff, 0x21262d);
+    grid.position.y = 0;
+    scene.add(grid);
+
+    // ==========================================
+    // 2. THE PHYSICS CONSTANTS & PARAMETERS
+    // ==========================================
+    // Values directly from your spreadsheet:
+    const wingspan = 64.8;         // Lead aircraft wingspan (m)
+    const b0 = (Math.PI / 4) * wingspan; // Vortex core spacing = 50.89 m
+    const rc = 0.04 * wingspan;    // Core radius = 2.59 m
+    const gamma0 = 550.54;         // Circulation strength (m²/s)
+    const decayTau = 45.0;         // Decay time constant (s)
+
+    // Left and Right core center coordinates (Y = lateral, Z = altitude)
+    const leftCore = { y: -b0 / 2, z: 35.0 };
+    const rightCore = { y: +b0 / 2, z: 35.0 };
+
+    // Burnham-Hallock Tangential Velocity Formula
+    function getSwirlVelocity(r, gamma, coreRadius) {
+      if (r < 0.01) return 0;
+      return (gamma / (2 * Math.PI * r)) * ((r * r) / (r * r + coreRadius * coreRadius));
+    }
+
+    // ==========================================
+    // 3. CREATE THE PARTICLE SYSTEM
+    // ==========================================
+    const PARTICLE_COUNT = 4000;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(PARTICLE_COUNT * 3); // [x, y, z] for each particle
+    const colors = new Float32Array(PARTICLE_COUNT * 3);    // [r, g, b] for each particle
+
+    // Spawn particles in a box around the wingtip vortices
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const idx = i * 3;
+      positions[idx] = (Math.random() - 0.5) * 40;     // X: along runway length
+      positions[idx + 1] = (Math.random() - 0.5) * 80; // Y: lateral crosswind axis
+      positions[idx + 2] = Math.random() * 50 + 5;     // Z: altitude above ground
+
+      // Default blue color
+      colors[idx] = 0.2; colors[idx + 1] = 0.6; colors[idx + 2] = 1.0;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    // Particle Appearance Material
+    const material = new THREE.PointsMaterial({
+      size: 1.2,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending // Gives the particles a glowing energy look
+    });
+
+    const particleSystem = new THREE.Points(geometry, material);
+    // Three.js uses Y as up/down by default; we rotate so Z is altitude:
+    particleSystem.rotation.x = -Math.PI / 2;
+    scene.add(particleSystem);
+
+    // ==========================================
+    // 4. ANIMATION & PHYSICS SIMULATION LOOP
+    // ==========================================
+    const clock = new THREE.Clock();
+    let simulationTime = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const dt = clock.getDelta();
+      simulationTime += dt;
+
+      // 1. Calculate decaying circulation strength: Γ(t) = Γ₀ * exp(-t / τ)
+      const currentGamma = gamma0 * Math.exp(-simulationTime / decayTau);
+
+      // 2. Vortices sink toward the ground at speed w = Γ / (2π b₀)
+      const sinkSpeed = currentGamma / (2 * Math.PI * b0);
+      if (leftCore.z > 5.0) {
+        leftCore.z -= sinkSpeed * dt;
+        rightCore.z -= sinkSpeed * dt;
+      }
+
+      const pos = geometry.attributes.position.array;
+      const col = geometry.attributes.color.array;
+
+      // 3. Update each particle's position using the Burnham-Hallock formula
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const idx = i * 3;
+        const py = pos[idx + 1]; // Lateral position
+        const pz = pos[idx + 2]; // Altitude position
+
+        // Distance to left vortex core
+        const dyL = py - leftCore.y;
+        const dzL = pz - leftCore.z;
+        const rL = Math.sqrt(dyL * dyL + dzL * dzL);
+        const vL = getSwirlVelocity(rL, currentGamma, rc);
+        // Counter-clockwise rotation
+        const vyL = rL > 0.01 ? -vL * (dzL / rL) : 0;
+        const vzL = rL > 0.01 ? +vL * (dyL / rL) : 0;
+
+        // Distance to right vortex core
+        const dyR = py - rightCore.y;
+        const dzR = pz - rightCore.z;
+        const rR = Math.sqrt(dyR * dyR + dzR * dzR);
+        const vR = getSwirlVelocity(rR, currentGamma, rc);
+        // Clockwise rotation
+        const vyR = rR > 0.01 ? +vR * (dzR / rR) : 0;
+        const vzR = rR > 0.01 ? -vR * (dyR / rR) : 0;
+
+        // Total wind velocity vector
+        const totalVy = vyL + vyR;
+        const totalVz = vzL + vzR;
+        const speed = Math.sqrt(totalVy * totalVy + totalVz * totalVz);
+
+        // Move the particle: position = position + velocity * time
+        pos[idx + 1] += totalVy * dt;
+        pos[idx + 2] += totalVz * dt;
+
+        // Dynamic Heatmap Coloring
+        if (speed > 10.0) {
+          col[idx] = 1.0; col[idx + 1] = 0.15; col[idx + 2] = 0.1; // Red: Severe hazard
+        } else if (speed > 4.0) {
+          col[idx] = 1.0; col[idx + 1] = 0.85; col[idx + 2] = 0.0; // Yellow: Moderate
+        } else {
+          col[idx] = 0.1; col[idx + 1] = 0.5; col[idx + 2] = 1.0;  // Blue: Safe
+        }
+
+        // If particle touches ground or drifts too far, respawn it
+        if (pos[idx + 2] <= 1.0 || Math.abs(pos[idx + 1]) > 70) {
+          pos[idx + 1] = (Math.random() - 0.5) * 80;
+          pos[idx + 2] = Math.random() * 45 + 10;
+        }
+      }
+
+      // Tell Three.js that particle coordinates and colors have changed
+      geometry.attributes.position.needsUpdate = true;
+      geometry.attributes.color.needsUpdate = true;
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Handle browser window resizing
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
