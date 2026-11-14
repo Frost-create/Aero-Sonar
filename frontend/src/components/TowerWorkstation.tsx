@@ -1,165 +1,100 @@
 import React, { useState } from 'react';
-import { Clock, AlertTriangle, CheckCircle2, ArrowRightLeft, Fuel, PlaneTakeoff, PlaneLanding } from 'lucide-react';
-import { AIRPORTS, type AirportCode, type WakeTelemetry } from '../physics/wakeEngine';
+import { Clock, AlertTriangle, CheckCircle2, ArrowRightLeft, ArrowUp, ArrowDown, Grid, ListOrdered, PlaneTakeoff, PlaneLanding } from 'lucide-react';
+import { AIRPORTS, type AirportCode, type FlightRecord, type PairConflictAnalysis, type WakeTelemetry } from '../physics/wakeEngine';
 
 interface Props {
   airport: AirportCode;
+  flights: FlightRecord[];
+  matrixAnalyses: PairConflictAnalysis[];
+  selectedLeadId: string;
+  selectedFollowingId: string;
   crosswindKts: number;
-  separationNm: number;
   telemetry: WakeTelemetry;
-  onApplyCompression: (targetNm: number) => void;
-}
-
-interface FlightStrip {
-  callsign: string;
-  acType: string;
-  wakeClass: 'SUPER' | 'HEAVY' | 'MEDIUM';
-  opType: 'ARR' | 'DEP';
-  runway: string;
-  icaoSepNm: number;
-  dynamicSepNm: number;
-  delaySavedMin: number;
-  gateHold: boolean;
-  status: 'SEQUENCED' | 'COMPRESSIBLE' | 'HOLDING';
+  lightMode: boolean;
+  onUpdateArrivalTime: (callsign: string, newMinutes: number) => void;
+  onReorderFlight: (index: number, direction: -1 | 1) => void;
+  onToggleRunway: (callsign: string) => void;
+  onSelectPairFromMatrix: (leadId: string, followingId: string) => void;
+  onOptimizeQueue: () => void;
 }
 
 export default function TowerWorkstation({
   airport,
+  flights,
+  matrixAnalyses,
+  selectedLeadId,
+  selectedFollowingId,
   crosswindKts,
-  separationNm,
   telemetry,
-  onApplyCompression,
+  lightMode,
+  onUpdateArrivalTime,
+  onReorderFlight,
+  onToggleRunway,
+  onSelectPairFromMatrix,
+  onOptimizeQueue,
 }: Props) {
+  const [bottomTab, setBottomTab] = useState<'STRIPS' | 'MATRIX'>('STRIPS');
   const spec = AIRPORTS[airport];
   const rwyAlt = spec.runway.endsWith('R') ? spec.runway.replace('R', 'L') : spec.runway.replace('L', 'R');
-
-  const [compressedApplied, setCompressedApplied] = useState(false);
-  const [strips, setStrips] = useState<FlightStrip[]>([
-    {
-      callsign: 'UAL863',
-      acType: 'A388',
-      wakeClass: 'SUPER',
-      opType: 'ARR',
-      runway: spec.runway,
-      icaoSepNm: 6.0,
-      dynamicSepNm: crosswindKts >= 10 ? 3.5 : 4.5,
-      delaySavedMin: crosswindKts >= 10 ? 4.2 : 2.1,
-      gateHold: false,
-      status: 'SEQUENCED',
-    },
-    {
-      callsign: 'DAL1428',
-      acType: 'B738',
-      wakeClass: 'MEDIUM',
-      opType: 'ARR',
-      runway: spec.runway,
-      icaoSepNm: 6.0,
-      dynamicSepNm: crosswindKts >= 10 ? 3.4 : 4.2,
-      delaySavedMin: crosswindKts >= 10 ? 5.8 : 3.0,
-      gateHold: false,
-      status: 'COMPRESSIBLE',
-    },
-    {
-      callsign: 'ANA108',
-      acType: 'B789',
-      wakeClass: 'HEAVY',
-      opType: 'ARR',
-      runway: rwyAlt,
-      icaoSepNm: 5.0,
-      dynamicSepNm: crosswindKts >= 10 ? 3.2 : 3.9,
-      delaySavedMin: crosswindKts >= 10 ? 3.9 : 1.8,
-      gateHold: false,
-      status: 'COMPRESSIBLE',
-    },
-    {
-      callsign: 'SWA2194',
-      acType: 'B38M',
-      wakeClass: 'MEDIUM',
-      opType: 'DEP',
-      runway: '01R',
-      icaoSepNm: 3.0,
-      dynamicSepNm: 2.5,
-      delaySavedMin: 3.4,
-      gateHold: telemetry.status === 'CRITICAL',
-      status: telemetry.status === 'CRITICAL' ? 'HOLDING' : 'SEQUENCED',
-    },
-  ]);
-
-  const handleCompressAll = () => {
-    const optimalNm = crosswindKts >= 10 ? 3.4 : 4.2;
-    setCompressedApplied(true);
-    onApplyCompression(optimalNm);
-    setStrips((prev) =>
-      prev.map((s) => ({
-        ...s,
-        dynamicSepNm: optimalNm,
-        status: 'SEQUENCED',
-        gateHold: false,
-      }))
-    );
-  };
-
-  const toggleRunway = (callsign: string) => {
-    setStrips((prev) =>
-      prev.map((s) =>
-        s.callsign === callsign
-          ? { ...s, runway: s.runway === spec.runway ? rwyAlt : spec.runway }
-          : s
-      )
-    );
-  };
 
   const windDir = spec.runwayHeading + 45 > 360 ? spec.runwayHeading - 45 : spec.runwayHeading + 45;
   const totalWind = Math.max(4, Math.round(crosswindKts * 1.4));
   const gustWind = totalWind + 6;
-  const gateHoldActive = telemetry.status === 'CRITICAL' && !compressedApplied;
+  const gateHoldActive = telemetry.riskCategory === 'CRITICAL';
+
+  const getPairResult = (f1: string, f2: string) =>
+    matrixAnalyses.find(
+      (m) => (m.leadId === f1 && m.followingId === f2) || (m.leadId === f2 && m.followingId === f1)
+    );
+
+  const flightHasConflict = (callsign: string) =>
+    matrixAnalyses.some(
+      (m) => (m.leadId === callsign || m.followingId === callsign) && (m.matrixSeverity === 'HIGH' || m.matrixSeverity === 'POTENTIAL')
+    );
 
   return (
-    <div className="bg-[#070b14] border border-slate-800 rounded-xl p-3.5 font-mono text-xs flex flex-col gap-3">
-      {/* Top IDS4 Tower Status Strip (Modeled on SFO ATCT Right Monitor) */}
+    <div className={`border rounded-xl p-3.5 font-mono text-xs flex flex-col gap-3 ${lightMode ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#070b14] border-slate-800 text-slate-100'}`}>
+      {/* Top IDS4 Tower Status Strip */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-        {/* ATIS & Altimeter Box */}
-        <div className="lg:col-span-3 bg-black border border-amber-500/40 rounded-lg p-2.5 flex items-center justify-between">
+        <div className={`lg:col-span-3 border rounded-lg p-2.5 flex items-center justify-between ${lightMode ? 'bg-slate-100 border-amber-500/60' : 'bg-black border-amber-500/40'}`}>
           <div>
             <span className="text-[10px] text-slate-400 block">ATIS INFO</span>
-            <span className="text-3xl font-black text-amber-400 leading-none">Z</span>
+            <span className="text-3xl font-black text-amber-500 leading-none">Z</span>
           </div>
           <div className="text-right">
             <span className="text-[10px] text-slate-400 block">{spec.code} ATCT-GC</span>
-            <span className="text-lg font-extrabold text-amber-300">30.11</span>
-            <span className="text-[10px] text-emerald-400 block">CAT I / VMC</span>
+            <span className="text-lg font-extrabold text-amber-400">30.11</span>
+            <span className="text-[10px] text-emerald-500 block">CAT I / VMC</span>
           </div>
         </div>
 
-        {/* Per-Runway Threshold Wind Readouts */}
-        <div className="lg:col-span-5 bg-black border border-slate-800 rounded-lg p-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+        <div className={`lg:col-span-5 border rounded-lg p-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] ${lightMode ? 'bg-slate-100 border-slate-300' : 'bg-black border-slate-800'}`}>
           <div className="flex justify-between">
-            <span className="text-amber-300 font-bold">{spec.runway}A:</span>
-            <span className="text-white">{String(windDir).padStart(3, '0')}° {totalWind}G{gustWind}</span>
+            <span className="text-amber-400 font-bold">{spec.runway}A:</span>
+            <span>{String(windDir).padStart(3, '0')}° {totalWind}G{gustWind}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-amber-300 font-bold">{rwyAlt}A:</span>
-            <span className="text-white">{String(windDir).padStart(3, '0')}° {totalWind}KT</span>
+            <span className="text-amber-400 font-bold">{rwyAlt}A:</span>
+            <span>{String(windDir).padStart(3, '0')}° {totalWind}KT</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-cyan-300 font-bold">01LD:</span>
-            <span className="text-slate-300">{String(windDir).padStart(3, '0')}° {Math.max(3, totalWind - 4)}KT</span>
+            <span className="text-cyan-400 font-bold">01LD:</span>
+            <span>{String(windDir).padStart(3, '0')}° {Math.max(3, totalWind - 4)}KT</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-cyan-300 font-bold">X-WIND:</span>
+            <span className="text-cyan-400 font-bold">X-WIND:</span>
             <span className="text-emerald-400 font-bold">{crosswindKts.toFixed(1)} KTS</span>
           </div>
         </div>
 
-        {/* Smart Gate-Hold & Flow Optimization Banner */}
-        <div className="lg:col-span-4 bg-black border border-slate-800 rounded-lg p-2.5 flex flex-col justify-between">
+        <div className={`lg:col-span-4 border rounded-lg p-2.5 flex flex-col justify-between ${lightMode ? 'bg-slate-100 border-slate-300' : 'bg-black border-slate-800'}`}>
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-slate-400">DEPARTURE FLOW GATEWAY</span>
             <span
-              className={`px-2 py-0.5 rounded text-[11px] font-black tracking-wider ${
+              className={`px-2 py-0.5 rounded text-[10px] font-black ${
                 gateHoldActive
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 animate-pulse'
-                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 animate-pulse'
+                  : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
               }`}
             >
               {gateHoldActive ? 'GATEHOLD ACTIVE' : 'FLOW RELEASED'}
@@ -167,122 +102,220 @@ export default function TowerWorkstation({
           </div>
 
           <div className="flex items-center justify-between mt-1.5 gap-2">
-            <span className="text-[10px] text-slate-300">
-              {gateHoldActive
-                ? 'Hold DEP 01R 45s for wake decay (saves 180kg Jet-A)'
-                : `Dynamic spacing active (${separationNm.toFixed(1)} NM)`}
+            <span className="text-[10px] text-slate-400 truncate">
+              Pair: {selectedLeadId} → {selectedFollowingId} ({telemetry.separationNm} NM)
             </span>
             <button
-              onClick={handleCompressAll}
+              onClick={onOptimizeQueue}
               className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] whitespace-nowrap transition"
             >
-              {compressedApplied ? '✓ FLOW OPTIMIZED' : 'OPTIMIZE QUEUE'}
+              SPACE QUEUE SAFELY
             </button>
           </div>
         </div>
       </div>
 
-      {/* Electronic Flight Progress Strips (Modeled on Tower Desk Paper Strips) */}
-      <div className="space-y-1.5">
-        <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-400 px-1">
-          <span className="font-bold uppercase tracking-wider text-cyan-400">
-            Electronic Flight Progress Strips — Active Runway Queue
-          </span>
-          <span className="text-emerald-400">
-            Total Queue Delay Reduction: -15.4 MINS | Fuel Saved: 640 KG
-          </span>
+      {/* Switcher Bar: Arrival Sequence Timeline vs Pairwise Aircraft Conflict Matrix */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setBottomTab('STRIPS')}
+            className={`px-3 py-1 rounded text-[11px] font-bold flex items-center gap-1.5 border transition ${
+              bottomTab === 'STRIPS'
+                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-400'
+                : 'border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ListOrdered className="w-3.5 h-3.5" /> ARRIVAL SEQUENCE TIMELINE & STRIPS
+          </button>
+          <button
+            onClick={() => setBottomTab('MATRIX')}
+            className={`px-3 py-1 rounded text-[11px] font-bold flex items-center gap-1.5 border transition ${
+              bottomTab === 'MATRIX'
+                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-400'
+                : 'border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Grid className="w-3.5 h-3.5" /> AIRCRAFT CONFLICT MATRIX
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-          {strips.map((strip) => (
-            <div
-              key={strip.callsign}
-              className={`rounded-lg border p-2.5 transition ${
-                strip.opType === 'ARR'
-                  ? 'bg-[#0b1524] border-cyan-900/70'
-                  : 'bg-[#171309] border-amber-900/70'
-              }`}
-            >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-1 mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  {strip.opType === 'ARR' ? (
-                    <PlaneLanding className="w-3.5 h-3.5 text-cyan-400" />
-                  ) : (
-                    <PlaneTakeoff className="w-3.5 h-3.5 text-amber-400" />
-                  )}
-                  <span className="font-black text-white text-xs">{strip.callsign}</span>
-                  <span className="text-[10px] px-1 rounded bg-slate-800 text-slate-300">{strip.acType}</span>
-                </div>
-                <span
-                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                    strip.wakeClass === 'SUPER'
-                      ? 'bg-red-500/20 text-red-300'
-                      : strip.wakeClass === 'HEAVY'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : 'bg-cyan-500/20 text-cyan-300'
-                  }`}
-                >
-                  {strip.wakeClass}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] mb-1.5">
-                <div>
-                  <span className="text-slate-400 text-[9px] block">ASSIGNED RWY</span>
-                  <button
-                    onClick={() => toggleRunway(strip.callsign)}
-                    className="font-bold text-amber-300 hover:underline flex items-center gap-1"
-                    title="Click to reassign parallel runway"
-                  >
-                    RWY {strip.runway} <ArrowRightLeft className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-                <div className="text-right">
-                  <span className="text-slate-400 text-[9px] block">WAKE SPACING</span>
-                  <span className="text-slate-500 line-through mr-1">{strip.icaoSepNm.toFixed(1)}</span>
-                  <span className="text-emerald-400 font-bold">{strip.dynamicSepNm.toFixed(1)} NM</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[10px]">
-                <span className="text-emerald-400 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> -{strip.delaySavedMin}m delay
-                </span>
-                <span
-                  className={`font-bold flex items-center gap-1 ${
-                    strip.status === 'HOLDING'
-                      ? 'text-amber-400'
-                      : strip.status === 'SEQUENCED'
-                      ? 'text-emerald-400'
-                      : 'text-cyan-300'
-                  }`}
-                >
-                  {strip.status === 'HOLDING' ? (
-                    <>
-                      <AlertTriangle className="w-3 h-3" /> GATEHOLD
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-3 h-3" /> {strip.status}
-                    </>
-                  )}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Bottom Active NOTAMs & Outages Bar (Modeled on Bottom-Right IDS4 Box) */}
-      <div className="bg-red-950/25 border border-red-900/50 rounded-lg px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[10px]">
-        <div className="flex items-center gap-2 text-red-300">
-          <span className="font-bold bg-red-500/20 px-1.5 py-0.5 rounded">OUTAGES / NOTAMS</span>
-          <span>TWY J CLSD BTN {spec.runway} & {rwyAlt} • WAKE RECAT-EU DYNAMIC SEPARATION AUTHORIZED</span>
-        </div>
-        <span className="text-slate-400 flex items-center gap-1">
-          <Fuel className="w-3 h-3 text-emerald-400" /> IDLE TARMAC BURN PREVENTED: $2,840/HR
+        <span className="text-[10px] text-slate-400">
+          {bottomTab === 'STRIPS'
+            ? 'Adjust arrival ETA or queue order to dynamically update 3D spacing & risk'
+            : 'Click any pairwise cell to select pair & focus 3D camera'}
         </span>
       </div>
+
+      {bottomTab === 'STRIPS' ? (
+        /* Interactive Arrival Sequence Timeline & Flight Progress Strips */
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5">
+          {flights.map((flight, index) => {
+            const isSelected = flight.callsign === selectedLeadId || flight.callsign === selectedFollowingId;
+            const hasRisk = flightHasConflict(flight.callsign);
+
+            return (
+              <div
+                key={flight.callsign}
+                className={`rounded-lg border p-2.5 transition ${
+                  hasRisk
+                    ? 'border-red-500/80 bg-red-950/20'
+                    : isSelected
+                    ? 'border-cyan-400 bg-cyan-950/20'
+                    : lightMode
+                    ? 'bg-slate-50 border-slate-300'
+                    : 'bg-[#0b1524] border-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between border-b border-slate-800/70 pb-1 mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-cyan-300">
+                      #{index + 1}
+                    </span>
+                    {flight.opType === 'ARR' ? (
+                      <PlaneLanding className="w-3.5 h-3.5 text-cyan-400" />
+                    ) : (
+                      <PlaneTakeoff className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span className="font-black text-xs">{flight.callsign}</span>
+                    <span className="text-[10px] text-slate-400">{flight.acType}</span>
+                  </div>
+
+                  {/* Sequence Reorder Buttons */}
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      onClick={() => onReorderFlight(index, -1)}
+                      disabled={index === 0}
+                      className="p-0.5 rounded bg-slate-800 text-slate-300 disabled:opacity-30 hover:text-cyan-300"
+                      title="Move earlier in sequence"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => onReorderFlight(index, 1)}
+                      disabled={index === flights.length - 1}
+                      className="p-0.5 rounded bg-slate-800 text-slate-300 disabled:opacity-30 hover:text-cyan-300"
+                      title="Move later in sequence"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Runway & Editable Scheduled Arrival Time */}
+                <div className="flex items-center justify-between text-[11px] mb-1.5">
+                  <div>
+                    <span className="text-slate-400 text-[9px] block">ASSIGNED RWY</span>
+                    <button
+                      onClick={() => onToggleRunway(flight.callsign)}
+                      className="font-bold text-amber-400 hover:underline flex items-center gap-1"
+                    >
+                      RWY {flight.runway} <ArrowRightLeft className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-slate-400 text-[9px] block">SCHED ARRIVAL (ETA)</span>
+                    <div className="flex items-center gap-1 justify-end">
+                      <button
+                        onClick={() => onUpdateArrivalTime(flight.callsign, Math.max(0.5, Math.round((flight.arrivalMinutes - 0.5) * 10) / 10))}
+                        className="px-1.5 py-0.2 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold text-emerald-400 min-w-[44px] text-center">
+                        +{flight.arrivalMinutes.toFixed(1)}m
+                      </span>
+                      <button
+                        onClick={() => onUpdateArrivalTime(flight.callsign, Math.min(15.0, Math.round((flight.arrivalMinutes + 0.5) * 10) / 10))}
+                        className="px-1.5 py-0.2 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-slate-800/70 text-[10px]">
+                  <span className="text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> {flight.wakeClass} ({flight.speedKts}kt)
+                  </span>
+                  <span className={`font-bold flex items-center gap-1 ${hasRisk ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {hasRisk ? (
+                      <>
+                        <AlertTriangle className="w-3 h-3" /> CONFLICT RISK
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3 h-3" /> SEQUENCED
+                      </>
+                    )}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Pairwise Aircraft Conflict Matrix */
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-[11px]">
+            <thead>
+              <tr className="border-b border-slate-800 text-slate-400">
+                <th className="py-1.5 px-2">AIRCRAFT PAIR</th>
+                {flights.map((f) => (
+                  <th key={f.callsign} className="py-1.5 px-2 font-bold text-cyan-400">
+                    {f.callsign} ({f.wakeClass[0]})
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {flights.map((rowFlight) => (
+                <tr key={rowFlight.callsign} className="border-b border-slate-800/60">
+                  <td className="py-1.5 px-2 font-bold text-white">
+                    {rowFlight.callsign} <span className="text-[10px] text-slate-400">+{rowFlight.arrivalMinutes.toFixed(1)}m</span>
+                  </td>
+                  {flights.map((colFlight) => {
+                    if (rowFlight.callsign === colFlight.callsign) {
+                      return (
+                        <td key={colFlight.callsign} className="py-1.5 px-2 text-slate-600">
+                          —
+                        </td>
+                      );
+                    }
+                    const res = getPairResult(rowFlight.callsign, colFlight.callsign);
+                    if (!res) return <td key={colFlight.callsign} />;
+
+                    const colorClasses =
+                      res.matrixSeverity === 'HIGH'
+                        ? 'bg-red-500/20 border-red-500 text-red-300'
+                        : res.matrixSeverity === 'POTENTIAL'
+                        ? 'bg-orange-500/20 border-orange-500 text-orange-300'
+                        : res.matrixSeverity === 'MONITOR'
+                        ? 'bg-yellow-500/20 border-yellow-500 text-yellow-300'
+                        : 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300';
+
+                    return (
+                      <td key={colFlight.callsign} className="py-1 px-1.5">
+                        <button
+                          onClick={() => onSelectPairFromMatrix(rowFlight.callsign, colFlight.callsign)}
+                          className={`w-full text-left px-2 py-1 rounded border text-[10px] font-bold transition hover:brightness-125 ${colorClasses}`}
+                        >
+                          <div>{res.conflictLabel}</div>
+                          <div className="text-[9px] opacity-80 font-normal">
+                            CPA: {res.cpaDistanceNm} NM • Risk: {res.riskScore}%
+                          </div>
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
