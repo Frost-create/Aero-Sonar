@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+.dcb-btn {
+  background: linear-gradient(180deg, #152e38 0%, #0d1e24 100%);
+  border: 1px solid #2b6375;
+  color: #9ad8e6;
+  font-size: 10px;
+  line-height: 1.15;
+  padding: 3px 6px;
+  min-width: 54px;
+  text-align: center;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.dcb-btn:hover { border-color: #5ce6e6; color: #ffffff; }
+.dcb-btn.active {
+  background: linear-gradient(180deg, #1f5366 0%, #143642 100%);
+  border-color: #5ce6e6;
+  color: #5ce6e6;
+}
