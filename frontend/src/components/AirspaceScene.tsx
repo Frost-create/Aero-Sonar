@@ -551,15 +551,6 @@ function AnimatedAirspace({
 
       {/* Physically-scaled vortex particles trail the lead aircraft */}
       {params.showHazardZones && (
-        <WakeParticleField
-          leadFlight={leadFlight}
-          leadPosition={leadPos}
-          telemetry={telemetry}
-          crosswindKts={params.crosswindKts}
-          trailLength={wakeTrailLength}
-          isPlaying={params.isPlaying}
-        />
-      {params.showHazardZones && (
         <>
           <Line points={leftPoints} color={hazardColor} lineWidth={2.2} transparent opacity={0.55} />
           <Line points={rightPoints} color={hazardColor} lineWidth={2.2} transparent opacity={0.55} />
