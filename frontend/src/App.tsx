@@ -552,11 +552,11 @@ export default function App() {
                 <>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-400 flex items-center gap-1"><Wind className="w-3.5 h-3.5 text-cyan-400" /> Wind Speed (All-Sector)</span>
-                      <span className="font-mono text-cyan-400 font-bold">{params.crosswindKts.toFixed(1)} kts</span>
+                      <span className="font-mono text-cyan-400 font-bold">{params.crosswindKts > 0 ? `+${params.crosswindKts.toFixed(1)} kts (R)` : params.crosswindKts < 0 ? `${params.crosswindKts.toFixed(1)} kts (L)` : "0.0 kts"}</span>
                     </div>
                     <input
                       type="range"
-                      min={0}
+                      min={-30}
                       max={30}
                       step={0.5}
                       value={params.crosswindKts}
