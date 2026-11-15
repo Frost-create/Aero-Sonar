@@ -8,6 +8,15 @@ export const leadAircraftState = {
   ambientCrosswindY: 0.0    // Ambient crosswind component along runway width (m/s)
 };
 
+export function createScaledAircraftState(aircraft, scale = 1, ambientCrosswindY = aircraft.ambientCrosswindY) {
+  return {
+    ...aircraft,
+    mass: aircraft.mass * scale,
+    wingspan: aircraft.wingspan * scale,
+    ambientCrosswindY
+  };
+}
+
 export const followerAircraftState = {
   wingspan: 34.0,           // b_follower (m) - Medium category (e.g., A320)
   speed: 70.0,              // V_follower (m/s)
