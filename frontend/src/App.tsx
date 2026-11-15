@@ -1,3 +1,5 @@
+import AtcRadar from "./AtcRadar";
+import KsfoRadar from "./KsfoRadar";
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Wind, ShieldAlert, Cpu, Sparkles, Plane, Leaf, DollarSign, WifiOff, Play, Pause, Volume2, VolumeX, RotateCcw, Radio, Sun, Moon, Maximize2, Minimize2, Activity } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -24,6 +26,8 @@ interface WeatherObservation {
 }
 
 export default function App() {
+  const [activeScreen, setActiveScreen] = useState<"DEMO" | "ATC" | "KSFO">("DEMO");
+  const [activeView, setActiveView] = useState<"DEMO" | "ATC_RADAR" | "KSFO_RADAR">("DEMO");
   const [flights, setFlights] = useState<FlightRecord[]>(INITIAL_FLIGHTS);
   const [lightMode, setLightMode] = useState(false);
   const [focusTrigger, setFocusTrigger] = useState(0);
@@ -287,7 +291,131 @@ export default function App() {
     setFlights((prev) => prev.map((f, idx) => ({ ...f, arrivalMinutes: Math.round((2.0 + idx * 2.1) * 10) / 10 })));
   };
 
+  if (activeView === "ATC_RADAR") {
+    return (
+      <>
+
+      {/* View Switcher Dropdown */}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-950/90 backdrop-blur border border-cyan-500/40 px-3 py-1.5 rounded-full shadow-2xl">
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">Screen:</span>
+        <select
+          value={activeView}
+          onChange={(e) => setActiveView(e.target.value as "DEMO" | "ATC_RADAR" | "KSFO_RADAR")}
+          className="bg-slate-900 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1 rounded-full border border-slate-700 focus:outline-none focus:border-cyan-400 cursor-pointer"
+        >
+          <option value="DEMO">3D Wake Demo (Digital Twin)</option>
+          <option value="ATC_RADAR">ATC Radar (TRACON)</option>
+          <option value="KSFO_RADAR">KSFO Surface Radar (ASDE-X)</option>
+        </select>
+      </div>
+
+        <AtcRadar />
+      </>
+    );
+  }
+
+  if (activeView === "KSFO_RADAR") {
+    return (
+      <>
+
+      {/* View Switcher Dropdown */}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-950/90 backdrop-blur border border-cyan-500/40 px-3 py-1.5 rounded-full shadow-2xl">
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">Screen:</span>
+        <select
+          value={activeView}
+          onChange={(e) => setActiveView(e.target.value as "DEMO" | "ATC_RADAR" | "KSFO_RADAR")}
+          className="bg-slate-900 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1 rounded-full border border-slate-700 focus:outline-none focus:border-cyan-400 cursor-pointer"
+        >
+          <option value="DEMO">3D Wake Demo (Digital Twin)</option>
+          <option value="ATC_RADAR">ATC Radar (TRACON)</option>
+          <option value="KSFO_RADAR">KSFO Surface Radar (ASDE-X)</option>
+        </select>
+      </div>
+
+        <KsfoRadar />
+      </>
+    );
+  }
+
+  if (activeScreen === "ATC") {
+    return (
+      <>
+
+      {/* Screen Switcher Dropdown */}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-950/90 backdrop-blur border border-cyan-500/40 px-3 py-1.5 rounded-full shadow-2xl">
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">View:</span>
+        <select
+          value={activeScreen}
+          onChange={(e) => setActiveScreen(e.target.value as "DEMO" | "ATC" | "KSFO")}
+          className="bg-slate-900 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1 rounded-full border border-slate-700 focus:outline-none focus:border-cyan-400 cursor-pointer"
+        >
+          <option value="DEMO">3D Wake Demo</option>
+          <option value="ATC">ATC Radar (TRACON)</option>
+          <option value="KSFO">KSFO Surface Radar</option>
+        </select>
+      </div>
+
+        <AtcRadar />
+      </>
+    );
+  }
+
+  if (activeScreen === "KSFO") {
+    return (
+      <>
+
+      {/* Screen Switcher Dropdown */}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-950/90 backdrop-blur border border-cyan-500/40 px-3 py-1.5 rounded-full shadow-2xl">
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">View:</span>
+        <select
+          value={activeScreen}
+          onChange={(e) => setActiveScreen(e.target.value as "DEMO" | "ATC" | "KSFO")}
+          className="bg-slate-900 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1 rounded-full border border-slate-700 focus:outline-none focus:border-cyan-400 cursor-pointer"
+        >
+          <option value="DEMO">3D Wake Demo</option>
+          <option value="ATC">ATC Radar (TRACON)</option>
+          <option value="KSFO">KSFO Surface Radar</option>
+        </select>
+      </div>
+
+        <KsfoRadar />
+      </>
+    );
+  }
+
   return (
+    <>
+
+      {/* Screen Switcher Dropdown */}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-950/90 backdrop-blur border border-cyan-500/40 px-3 py-1.5 rounded-full shadow-2xl">
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">View:</span>
+        <select
+          value={activeScreen}
+          onChange={(e) => setActiveScreen(e.target.value as "DEMO" | "ATC" | "KSFO")}
+          className="bg-slate-900 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1 rounded-full border border-slate-700 focus:outline-none focus:border-cyan-400 cursor-pointer"
+        >
+          <option value="DEMO">3D Wake Demo</option>
+          <option value="ATC">ATC Radar (TRACON)</option>
+          <option value="KSFO">KSFO Surface Radar</option>
+        </select>
+      </div>
+
+    <>
+
+      {/* View Switcher Dropdown */}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-950/90 backdrop-blur border border-cyan-500/40 px-3 py-1.5 rounded-full shadow-2xl">
+        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">Screen:</span>
+        <select
+          value={activeView}
+          onChange={(e) => setActiveView(e.target.value as "DEMO" | "ATC_RADAR" | "KSFO_RADAR")}
+          className="bg-slate-900 text-cyan-300 text-xs font-mono font-bold px-2.5 py-1 rounded-full border border-slate-700 focus:outline-none focus:border-cyan-400 cursor-pointer"
+        >
+          <option value="DEMO">3D Wake Demo (Digital Twin)</option>
+          <option value="ATC_RADAR">ATC Radar (TRACON)</option>
+          <option value="KSFO_RADAR">KSFO Surface Radar (ASDE-X)</option>
+        </select>
+      </div>
+
     <div className={`min-h-screen p-3.5 font-sans flex flex-col gap-3 transition-colors ${lightMode ? 'bg-slate-100 text-slate-900' : 'bg-[#03060f] text-slate-100'}`}>
       <header className={`flex flex-wrap items-center justify-between gap-2.5 border px-4 py-2.5 rounded-xl ${lightMode ? 'bg-white border-slate-300' : 'bg-slate-900/75 border-slate-800'}`}>
         <div className="flex items-center gap-3">
@@ -552,11 +680,11 @@ export default function App() {
                 <>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-400 flex items-center gap-1"><Wind className="w-3.5 h-3.5 text-cyan-400" /> Wind Speed (All-Sector)</span>
-                      <span className="font-mono text-cyan-400 font-bold">{params.crosswindKts > 0 ? `+${params.crosswindKts.toFixed(1)} kts (R)` : params.crosswindKts < 0 ? `${params.crosswindKts.toFixed(1)} kts (L)` : "0.0 kts"}</span>
+                      <span className="font-mono text-cyan-400 font-bold">{Math.abs(params.crosswindKts).toFixed(1)} kts</span>
                     </div>
                     <input
                       type="range"
-                      min={-30}
+                      min={0}
                       max={30}
                       step={0.5}
                       value={params.crosswindKts}
@@ -769,5 +897,7 @@ export default function App() {
         </>
       )}
     </div>
+    </>
+    </>
   );
 }
