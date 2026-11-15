@@ -1,7 +1,12 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function StarsRadar() {
+interface Props {
+  metarText: string;
+  qnh: string;
+}
+
+export default function StarsRadar({ metarText, qnh }: Props) {
   const [rangeNm, setRangeNm] = useState(30);
   const [rangeRings, setRangeRings] = useState(5);
   const [mapMode, setMapMode] = useState('ALL');
@@ -14,8 +19,6 @@ export default function StarsRadar() {
   const [dataFeedMode, setDataFeedMode] = useState('LIVE');
   const [feedStatus, setFeedStatus] = useState('CONNECTING');
   const [pollCountdown, setPollCountdown] = useState(10);
-  const [metarText] = useState('KSFO 142056Z 29014KT 10SM FEW025 SCT180 17/09 A3012 RMK AO2 SLP201');
-  const [qnh] = useState('30.12');
   const [utcTime, setUtcTime] = useState('1243/12');
 
   const [tracks, setTracks] = useState<any[]>([]);
@@ -119,6 +122,8 @@ export default function StarsRadar() {
   };
 
   const angleDiff = (curr: number, target: number) => ((target - curr + 540) % 360) - 180;
+  const stableIndex = (value: string, length: number) =>
+    [...value].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0, 7) % length;
 
   const seedSimTraffic = () => [
     {
@@ -166,40 +171,38 @@ export default function StarsRadar() {
   const fetchLiveOpenSky = async () => {
     if (dataFeedMode !== 'LIVE') return;
     try {
-      const res = await fetch('https://opensky-network.org/api/states/all?lamin=36.9&lomin=-123.3&lamax=38.4&lomax=-121.4');
+      const res = await fetch('http://localhost:3001/api/aircraft');
       if (!res.ok) throw new Error('OpenSky HTTP error');
       const json = await res.json();
-      if (!json || !json.states) throw new Error('No states');
+      if (!json || !Array.isArray(json.aircraft)) throw new Error('No aircraft snapshot');
 
-      const newTracks = json.states.map((s: any) => {
-        const icao24 = s[0];
-        const callsign = (s[1] || icao24).trim();
-        const lon = s[5];
-        const lat = s[6];
-        const altM = s[7] ?? s[13];
-        const onGround = s[8];
-        const vel = s[9] || 150;
-        const trk = s[10] || 284;
-        const vRate = s[11] || 0;
+      const newTracks = json.aircraft.map((s: any) => {
+        const icao24 = s.icao24;
+        const callsign = (s.callsign || icao24).trim();
+        const lon = s.longitude;
+        const lat = s.latitude;
+        const altFt = s.baroAltitudeFt ?? s.geoAltitudeFt ?? 0;
+        const onGround = s.onGround;
+        const spdKts = s.groundspeedKt;
+        const trk = s.headingDeg;
+        const vRate = s.verticalRateFpm;
 
         if (lat == null || lon == null || onGround) return null;
-        const altFt = Math.round((altM || 0) * 3.28084);
-        const spdKts = Math.round(vel * 1.94384);
         const nm = latLonToNm(lat, lon);
 
         const prefix = callsign.slice(0, 3).toUpperCase();
         const fleet = carrierFleet[prefix];
-        const type = fleet ? fleet.types[Math.floor(Math.random() * fleet.types.length)] : 'B738';
+        const type = fleet ? fleet.types[stableIndex(icao24, fleet.types.length)] : 'B738';
         const wake = fleet?.wake || '';
         const isSfoInbound = Math.hypot(nm.x, nm.y) < 25 && altFt < 12000;
 
         return {
-          id: icao24, icao24, callsign, squawk: s[14] || '1200',
+          id: icao24, icao24, callsign, squawk: s.squawk || '1200',
           x: nm.x, y: nm.y, lat, lon,
           altitude: altFt, targetAltitude: altFt,
-          speed: spdKts, targetSpeed: spdKts,
-          heading: trk, targetHeading: trk,
-          vRateFpm: Math.round(vRate * 196.85),
+          speed: spdKts ?? 150, targetSpeed: spdKts ?? 150,
+          heading: trk ?? 284, targetHeading: trk ?? 284,
+          vRateFpm: vRate ?? 0,
           type, wake, dest: 'SFO',
           assignedRwy: isSfoInbound ? (nm.y > 0 ? '28L' : '28R') : null,
           isSfoInbound, ldrIdx: 1, customOffset: null, history: []
@@ -628,7 +631,7 @@ export default function StarsRadar() {
             <div className="text-[#9ad8e6]">WEST PLAN: ARR 28L/28R | DEP 1L/1R</div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="px-1.5 py-0.2 text-[10px] font-bold bg-[#0c2b36] border border-[#5ce6e6]">
-                {feedStatus === 'LIVE' ? 'LIVE OPENSKY ADS-B' : 'SIMULATED BAY FEED'}
+                {feedStatus === 'LIVE' ? 'LIVE POSITIONS · DEMO METADATA' : 'SIMULATED BAY FEED'}
               </span>
               <span className="text-[#9ad8e6] text-[10px]">TRK: {tracks.length} | SFO INB: {arrivalList.length}</span>
             </div>
