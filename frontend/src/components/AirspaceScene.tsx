@@ -1,8 +1,8 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { AIRPORTS, getFlightState3D, type FlightRecord, type SimulationParams, type WakeTelemetry } from '../physics/wakeEngine';
+import { AIRPORTS, getFlightState3D, SPECS, type FlightRecord, type SimulationParams, type WakeTelemetry } from '../physics/wakeEngine';
 
 interface Props {
   flights: FlightRecord[];
@@ -67,6 +67,152 @@ function WindParticles({ signedCrosswindKts, headwindKts, isPlaying }: { signedC
         </mesh>
       ))}
     </group>
+  );
+}
+
+const WAKE_PARTICLE_COUNT = 4000;
+const METERS_TO_SCENE_UNITS = 0.05;
+const WAKE_DECAY_TAU_SEC = 45;
+const AIR_DENSITY_KG_M3 = 1.225;
+
+function burnhamHallockVelocity(gamma: number, coreRadius: number, radius: number) {
+  if (radius < 0.01) return 0;
+  return (gamma / (2 * Math.PI * radius)) * ((radius * radius) / (radius * radius + coreRadius * coreRadius));
+}
+
+function WakeParticleField({
+  leadFlight,
+  leadPosition,
+  telemetry,
+  crosswindKts,
+  trailLength,
+  isPlaying,
+}: {
+  leadFlight: FlightRecord;
+  leadPosition: [number, number, number];
+  telemetry: WakeTelemetry;
+  crosswindKts: number;
+  trailLength: number;
+  isPlaying: boolean;
+}) {
+  const { geometry, positions, colors } = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(WAKE_PARTICLE_COUNT * 3);
+    const colors = new Float32Array(WAKE_PARTICLE_COUNT * 3);
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return { geometry, positions, colors };
+  }, []);
+  const particles = useMemo(
+    () =>
+      Array.from({ length: WAKE_PARTICLE_COUNT }, (_, index) => {
+        const random = (salt: number) => {
+          const value = Math.sin((index + 1) * 127.1 + salt * 311.7) * 43758.5453;
+          return value - Math.floor(value);
+        };
+        return {
+          side: index % 2 === 0 ? -1 : 1,
+          trailFraction: random(1),
+          radiusScale: 0.25 + random(2) * 4.5,
+          phase: random(3) * Math.PI * 2,
+        };
+      }),
+    []
+  );
+  const phases = useRef(particles.map((particle) => particle.phase));
+  const positionsRef = useRef(positions);
+  const colorsRef = useRef(colors);
+  const geometryRef = useRef(geometry);
+  const leadSpec = SPECS[leadFlight.wakeClass];
+  const b0 = (Math.PI / 4) * leadSpec.span;
+  const coreRadius = 0.04 * leadSpec.span;
+  const gamma0 =
+    (leadSpec.mass * 9.80665) /
+    (AIR_DENSITY_KG_M3 * leadSpec.speed * b0);
+  const wakeAge = Math.max(1, telemetry.wakeAgeSec);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.05);
+    const crosswindMps = crosswindKts * 0.514444;
+
+    for (let i = 0; i < WAKE_PARTICLE_COUNT; i++) {
+      const particle = particles[i];
+      const age = Math.min(
+        particle.trailFraction * wakeAge,
+        crosswindMps > 0 ? 70 / crosswindMps : wakeAge
+      );
+      const gamma = gamma0 * Math.exp(-age / WAKE_DECAY_TAU_SEC);
+      const sinkDistance =
+        (gamma0 * WAKE_DECAY_TAU_SEC * (1 - Math.exp(-age / WAKE_DECAY_TAU_SEC))) /
+        (2 * Math.PI * b0);
+      const crosswindOffsetM = crosswindMps * age;
+      const leftCoreX =
+        leadPosition[0] - (b0 / 2) * METERS_TO_SCENE_UNITS + crosswindOffsetM * METERS_TO_SCENE_UNITS;
+      const rightCoreX =
+        leadPosition[0] + (b0 / 2) * METERS_TO_SCENE_UNITS + crosswindOffsetM * METERS_TO_SCENE_UNITS;
+      const coreX = particle.side < 0 ? leftCoreX : rightCoreX;
+      const coreY = Math.max(0.25, leadPosition[1] - sinkDistance * METERS_TO_SCENE_UNITS);
+      const radius = coreRadius * particle.radiusScale;
+      const tangentialSpeed = burnhamHallockVelocity(gamma, coreRadius, radius);
+      const angularSpeed = tangentialSpeed / radius;
+      const phase = phases.current[i] + (isPlaying ? -particle.side * angularSpeed * dt : 0);
+      phases.current[i] = phase % (Math.PI * 2);
+
+      const x = coreX + Math.cos(phase) * radius * METERS_TO_SCENE_UNITS;
+      const y = coreY + Math.sin(phase) * radius * METERS_TO_SCENE_UNITS;
+      const z = leadPosition[2] + particle.trailFraction * trailLength;
+      const index = i * 3;
+      positionsRef.current[index] = x;
+      positionsRef.current[index + 1] = y;
+      positionsRef.current[index + 2] = z;
+
+      const dyL = (x - leftCoreX) / METERS_TO_SCENE_UNITS;
+      const dzL = (y - coreY) / METERS_TO_SCENE_UNITS;
+      const rL = Math.hypot(dyL, dzL);
+      const vL = burnhamHallockVelocity(gamma, coreRadius, rL);
+      const vxL = rL > 0.01 ? -vL * (dzL / rL) : 0;
+      const vyL = rL > 0.01 ? vL * (dyL / rL) : 0;
+
+      const dyR = (x - rightCoreX) / METERS_TO_SCENE_UNITS;
+      const dzR = (y - coreY) / METERS_TO_SCENE_UNITS;
+      const rR = Math.hypot(dyR, dzR);
+      const vR = burnhamHallockVelocity(gamma, coreRadius, rR);
+      const vxR = rR > 0.01 ? vR * (dzR / rR) : 0;
+      const vyR = rR > 0.01 ? -vR * (dyR / rR) : 0;
+      const speed = Math.hypot(vxL + vxR, vyL + vyR);
+
+      if (speed > 10) {
+        colorsRef.current[index] = 1;
+        colorsRef.current[index + 1] = 0.15;
+        colorsRef.current[index + 2] = 0.1;
+      } else if (speed > 4) {
+        colorsRef.current[index] = 1;
+        colorsRef.current[index + 1] = 0.85;
+        colorsRef.current[index + 2] = 0;
+      } else {
+        colorsRef.current[index] = 0.1;
+        colorsRef.current[index + 1] = 0.5;
+        colorsRef.current[index + 2] = 1;
+      }
+    }
+
+    geometryRef.current.attributes.position.needsUpdate = true;
+    geometryRef.current.attributes.color.needsUpdate = true;
+  });
+
+  return (
+    <points geometry={geometry} frustumCulled={false}>
+      <pointsMaterial
+        size={0.09}
+        vertexColors
+        transparent
+        opacity={0.85}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </points>
   );
 }
 
@@ -403,6 +549,16 @@ function AnimatedAirspace({
         );
       })}
 
+      {/* Physically-scaled vortex particles trail the lead aircraft */}
+      {params.showHazardZones && (
+        <WakeParticleField
+          leadFlight={leadFlight}
+          leadPosition={leadPos}
+          telemetry={telemetry}
+          crosswindKts={params.crosswindKts}
+          trailLength={wakeTrailLength}
+          isPlaying={params.isPlaying}
+        />
       {params.showHazardZones && (
         <>
           <Line points={leftPoints} color={hazardColor} lineWidth={2.2} transparent opacity={0.55} />
@@ -478,6 +634,15 @@ export default function AirspaceScene({
         <span className="text-cyan-300">
           X-WIND: {Math.abs(signedCrosswindKts).toFixed(1)}KT {signedCrosswindKts > 0.2 ? '→ (R)' : signedCrosswindKts < -0.2 ? '← (L)' : ''}
         </span>
+      </div>
+
+      <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-slate-800 bg-slate-950/85 px-3 py-2 text-[10px] font-mono text-slate-300 backdrop-blur">
+        <div className="mb-1 font-bold tracking-wider text-cyan-300">LEAD WAKE PARTICLES</div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <span className="text-red-400">Red: Severe (&gt;10 m/s)</span>
+          <span className="text-amber-300">Yellow: Moderate (&gt;4 m/s)</span>
+          <span className="text-blue-300">Blue: Safe</span>
+        </div>
       </div>
 
       <Canvas camera={{ position: [12.5, 7.8, 12.5], fov: 44 }}>
