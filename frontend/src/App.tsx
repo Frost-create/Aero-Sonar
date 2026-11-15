@@ -12,15 +12,25 @@ import {
   type AirportCode,
   type FlightRecord,
   type SimulationParams,
-  type WakeCategory,
 } from './physics/wakeEngine';
+
+interface WeatherObservation {
+  rawOb: string;
+  wspd: number | null;
+  wdir: number | null;
+  wgst: number | null;
+  altim: number | null;
+  fltCat: string | null;
+}
 
 export default function App() {
   const [flights, setFlights] = useState<FlightRecord[]>(INITIAL_FLIGHTS);
   const [lightMode, setLightMode] = useState(false);
   const [focusTrigger, setFocusTrigger] = useState(0);
   const [feedMode, setFeedMode] = useState<'SIM' | 'REALTIME'>('SIM');
-  const [realtimeStatus, setRealtimeStatus] = useState<'BACKEND LIVE' | 'OPENSKY LIVE' | 'SYNCING'>('SYNCING');
+  const [realtimeStatus, setRealtimeStatus] = useState<
+    'SYNCING' | 'BACKEND LIVE (DEMO VALUES)' | 'INSUFFICIENT LIVE TRAFFIC — SHOWING SIM' | 'BACKEND UNAVAILABLE — SHOWING SIM'
+  >('SYNCING');
   const [isFullscreen3D, setIsFullscreen3D] = useState(false);
 
   const [params, setParams] = useState<SimulationParams>({
@@ -39,6 +49,7 @@ export default function App() {
 
   const [viewMode, setViewMode] = useState<'3D' | 'STARS'>('3D');
   const [liveMetar, setLiveMetar] = useState<string>(AIRPORTS.KSFO.metarFallback);
+  const [weatherObservation, setWeatherObservation] = useState<WeatherObservation | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentResponse, setAgentResponse] = useState<{
     mode: string;
@@ -80,80 +91,91 @@ export default function App() {
   useEffect(() => {
     const spec = AIRPORTS[params.airport];
     setLiveMetar(spec.metarFallback);
+    setWeatherObservation(null);
     if (params.offlineEdgeMode) return;
 
-    fetch(`https://aviationweather.gov/api/data/metar?ids=${params.airport}&format=json`)
-      .then((r) => r.json())
+    fetch(`http://localhost:3001/api/weather?airport=${params.airport}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`Weather API returned HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         if (Array.isArray(data) && data[0]?.rawOb) {
-          setLiveMetar(data[0].rawOb);
-          if (feedMode === 'REALTIME' && typeof data[0].wspd === 'number') {
-            const wdir = typeof data[0].wdir === 'number' ? data[0].wdir : spec.runwayHeading + 45;
+          const observation: WeatherObservation = {
+            rawOb: data[0].rawOb,
+            wspd: typeof data[0].wspd === 'number' ? data[0].wspd : null,
+            wdir: typeof data[0].wdir === 'number' ? data[0].wdir : null,
+            wgst: typeof data[0].wgst === 'number' ? data[0].wgst : null,
+            altim: typeof data[0].altim === 'number' ? data[0].altim : null,
+            fltCat: typeof data[0].fltCat === 'string' ? data[0].fltCat : null,
+          };
+          setWeatherObservation(observation);
+          setLiveMetar(observation.rawOb);
+          if (feedMode === 'REALTIME' && observation.wspd !== null) {
+            const wdir = observation.wdir ?? spec.runwayHeading + 45;
             const angleRad = ((wdir - spec.runwayHeading) * Math.PI) / 180;
-            const xwind = Math.min(20, Math.round(Math.abs(data[0].wspd * Math.sin(angleRad)) * 10) / 10);
+            const xwind = Math.min(20, Math.round(Math.abs(observation.wspd * Math.sin(angleRad)) * 10) / 10);
             setParams((p) => ({ ...p, crosswindKts: xwind }));
           }
+        } else {
+          setWeatherObservation(null);
         }
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        console.error('Weather API request failed', error);
+        setLiveMetar(`METAR UNAVAILABLE · ${spec.metarFallback}`);
+      });
   }, [params.airport, params.offlineEdgeMode, feedMode]);
 
   useEffect(() => {
     if (feedMode !== 'REALTIME') {
       setFlights(INITIAL_FLIGHTS);
+      setRealtimeStatus('SYNCING');
       return;
     }
 
     const syncRealtimeAtc = async () => {
-      const spec = AIRPORTS[params.airport];
-      const rwyAlt = spec.runway.endsWith('R') ? spec.runway.replace('R', 'L') : spec.runway.replace('L', 'R');
       try {
-        const res = await fetch(`http://localhost:8000/api/live-flights?airport=${params.airport}`);
+        const res = await fetch(`http://localhost:3001/api/live-flights?airport=${params.airport}`);
         if (!res.ok) throw new Error('Backend unavailable');
         const data = await res.json();
         if (Array.isArray(data.flights) && data.flights.length >= 2) {
-          setFlights(data.flights);
+          const liveFlights = data.flights as FlightRecord[];
+          setFlights(liveFlights);
+          setParams((current) => {
+            const callsigns = new Set(liveFlights.map((flight) => flight.callsign));
+            const leadFlightId = callsigns.has(current.leadFlightId)
+              ? current.leadFlightId
+              : liveFlights[0].callsign;
+            const followingFlightId =
+              callsigns.has(current.followingFlightId) && current.followingFlightId !== leadFlightId
+                ? current.followingFlightId
+                : liveFlights[0].callsign === leadFlightId
+                  ? liveFlights[1].callsign
+                  : liveFlights[0].callsign;
+            return { ...current, leadFlightId, followingFlightId };
+          });
           if (typeof data.crosswind_kts === 'number') {
             setParams((p) => ({ ...p, crosswindKts: data.crosswind_kts }));
           }
-          setRealtimeStatus('BACKEND LIVE');
+          setRealtimeStatus('BACKEND LIVE (DEMO VALUES)');
           return;
         }
-        throw new Error('Fallback to OpenSky');
+        setFlights(INITIAL_FLIGHTS);
+        setParams((current) => ({
+          ...current,
+          leadFlightId: INITIAL_FLIGHTS[0].callsign,
+          followingFlightId: INITIAL_FLIGHTS[1].callsign,
+        }));
+        setRealtimeStatus('INSUFFICIENT LIVE TRAFFIC — SHOWING SIM');
       } catch {
-        try {
-          const osRes = await fetch('https://opensky-network.org/api/states/all?lamin=37.2&lomin=-122.9&lamax=38.0&lomax=-121.8');
-          const osJson = await osRes.json();
-          const airborne = (osJson.states || []).filter((s: any) => s[1] && s[5] && s[6] && !s[8]).slice(0, 4);
-
-          if (airborne.length >= 2) {
-            const liveRecords: FlightRecord[] = airborne.map((s: any, idx: number) => {
-              const callsign = String(s[1]).trim();
-              const distNm = Math.max(1.5, Math.hypot((s[5] + 122.379) * 47.5, (s[6] - 37.621) * 60));
-              const speedKts = Math.max(135, Math.round((s[9] || 80) * 1.94384));
-              const wakeClass: WakeCategory = idx === 0 ? 'SUPER' : idx === 2 ? 'HEAVY' : 'MEDIUM';
-              return {
-                callsign,
-                acType: wakeClass === 'SUPER' ? 'A388' : wakeClass === 'HEAVY' ? 'B789' : 'B738',
-                wakeClass,
-                opType: idx === 3 ? 'DEP' : 'ARR',
-                runway: idx % 2 === 0 ? spec.runway : rwyAlt,
-                arrivalMinutes: Math.max(1.0, Math.round((distNm / speedKts) * 60 * 10) / 10),
-                speedKts,
-                icaoSepNm: wakeClass === 'SUPER' ? 6.0 : wakeClass === 'HEAVY' ? 5.0 : 3.0,
-              };
-            });
-            setFlights(liveRecords);
-            setParams((p) => ({
-              ...p,
-              leadFlightId: liveRecords[0].callsign,
-              followingFlightId: liveRecords[1].callsign,
-            }));
-            setRealtimeStatus('OPENSKY LIVE');
-          }
-        } catch {
-          setRealtimeStatus('BACKEND LIVE');
-        }
+        setFlights(INITIAL_FLIGHTS);
+        setParams((current) => ({
+          ...current,
+          leadFlightId: INITIAL_FLIGHTS[0].callsign,
+          followingFlightId: INITIAL_FLIGHTS[1].callsign,
+        }));
+        setRealtimeStatus('BACKEND UNAVAILABLE — SHOWING SIM');
       }
     };
 
@@ -176,11 +198,11 @@ export default function App() {
     const hasConflict = telemetry.wakeEncounter || telemetry.trajectoryConflict || telemetry.riskScore >= 35;
 
     const advisoryText = hasConflict
-      ? `${telemetry.conflictLabel} detected between ${leadFlight.callsign} and ${followingFlight.callsign}. ${followingFlight.callsign} is predicted to approach the estimated wake hazard zone in ${telemetry.timeToCpaSec}s (CPA ${telemetry.cpaDistanceNm} NM). Suggested alternate trajectory — awaiting controller approval: +50m upwind lateral offset or +1.5 min arrival spacing.`
-      : `No modeled conflict detected between ${leadFlight.callsign} and ${followingFlight.callsign} (CPA ${telemetry.cpaDistanceNm} NM, Wake Age ${telemetry.wakeAgeSec}s). Suggested alternate trajectory — awaiting controller approval if wind drops below 5 kts.`;
+      ? `SIMULATION ONLY — not operational guidance. ${telemetry.conflictLabel} modeled between ${leadFlight.callsign} and ${followingFlight.callsign}.`
+      : `SIMULATION ONLY — not operational guidance. No modeled conflict detected between ${leadFlight.callsign} and ${followingFlight.callsign}.`;
 
     try {
-      const res = await fetch('http://localhost:8000/api/atc-agent', {
+      const res = await fetch('http://localhost:3001/api/atc-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -191,12 +213,21 @@ export default function App() {
           offline_edge_mode: params.offlineEdgeMode,
         }),
       });
+      if (!res.ok) throw new Error(`Advisory API returned HTTP ${res.status}`);
       const data = await res.json();
+      if (
+        typeof data.mode !== 'string' ||
+        !Array.isArray(data.tool_trace) ||
+        typeof data.recommended_lateral_offset_m !== 'number' ||
+        typeof data.recommended_altitude_offset_ft !== 'number'
+      ) {
+        throw new Error('Advisory API returned an invalid response.');
+      }
       setAgentResponse({ ...data, atc_advisory: advisoryText });
       speakAtcClearance(advisoryText);
     } catch {
       setAgentResponse({
-        mode: feedMode === 'REALTIME' ? 'REALTIME_ATC_ADVISORY' : 'SIMULATION_DECISION_SUPPORT',
+        mode: 'LOCAL_SIMULATION_FALLBACK',
         atc_advisory: advisoryText,
         tool_trace: [
           `[PAIR] ${leadFlight.callsign} (${leadFlight.wakeClass}) vs ${followingFlight.callsign} (${followingFlight.wakeClass})`,
@@ -264,9 +295,13 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="text-base font-extrabold tracking-wider">AERO-SONAR</h1>
               <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                feedMode === 'REALTIME' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+                feedMode === 'REALTIME' && realtimeStatus === 'BACKEND LIVE (DEMO VALUES)'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : feedMode === 'REALTIME'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
               }`}>
-                {feedMode === 'REALTIME' ? `LIVE ATC (${realtimeStatus})` : 'SIMULATION SANDBOX'}
+                {feedMode === 'REALTIME' ? realtimeStatus : 'SIMULATION SANDBOX'}
               </span>
             </div>
             <p className="text-[11px] font-mono text-emerald-500 truncate max-w-md">{liveMetar}</p>
@@ -370,14 +405,17 @@ export default function App() {
             }`}
           >
             {params.offlineEdgeMode ? <WifiOff className="w-3.5 h-3.5" /> : <Cpu className="w-3.5 h-3.5 text-cyan-400" />}
-            {params.offlineEdgeMode ? 'EDGE FAILOVER' : 'GEMINI ONLINE'}
+            {params.offlineEdgeMode ? 'LOCAL SIMULATION' : 'ADVISORY API'}
           </button>
         </div>
       </header>
 
       {viewMode === 'STARS' ? (
         <div className="flex-1 rounded-xl overflow-hidden border border-cyan-900/60">
-          <StarsRadar />
+          <StarsRadar
+            metarText={liveMetar}
+            qnh={weatherObservation?.altim != null ? (weatherObservation.altim / 33.8639).toFixed(2) : '—'}
+          />
         </div>
       ) : isFullscreen3D ? (
         <div className="relative h-[calc(100vh-92px)] w-full">
@@ -425,7 +463,7 @@ export default function App() {
 
             <div className="flex items-center gap-2">
               <button onClick={triggerAtcAgent} disabled={agentLoading} className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-[11px]">
-                {agentLoading ? 'ANALYZING...' : 'RUN GEMINI ADVISORY'}
+                {agentLoading ? 'ANALYZING...' : 'RUN SIMULATION ADVISORY'}
               </button>
               <button onClick={() => setIsFullscreen3D(false)} className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-bold text-[11px] flex items-center gap-1">
                 <Minimize2 className="w-3.5 h-3.5" /> NORMAL VIEW
@@ -636,7 +674,7 @@ export default function App() {
 
               <div className="pt-2 border-t border-slate-800/60 flex-1 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Gemini ATC Agent</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Simulation Advisory API</h3>
                   {agentResponse && (
                     <button onClick={() => setAgentResponse(null)} className="text-[10px] text-slate-400 hover:text-cyan-400 flex items-center gap-1">
                       <RotateCcw className="w-3 h-3" /> Reset
@@ -674,6 +712,7 @@ export default function App() {
             selectedLeadId={leadFlight.callsign}
             selectedFollowingId={followingFlight.callsign}
             crosswindKts={params.crosswindKts}
+            weather={weatherObservation}
             telemetry={telemetry}
             lightMode={lightMode}
             onUpdateArrivalTime={handleUpdateArrivalTime}

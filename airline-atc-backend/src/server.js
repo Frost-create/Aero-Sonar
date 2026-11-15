@@ -5,6 +5,8 @@ import http from "node:http";
 import { Server } from "socket.io";
 import { OpenSkyClient } from "./opensky.js";
 import { normalizeState } from "./normalize.js";
+import { createAtcAgentResponse } from "./atcAgent.js";
+import { AIRPORT_CENTERS, buildDemoFlights, distanceNm } from "./liveFlights.js";
 
 const numberFromEnv = (name, fallback) => {
   const value = Number(process.env[name]);
@@ -85,6 +87,79 @@ app.get("/health", (_req, res) => {
 
 app.get("/api/aircraft", (_req, res) => {
   res.json(currentSnapshot());
+});
+
+app.get("/api/live-flights", (req, res) => {
+  const airport = String(req.query.airport || "").toUpperCase();
+  if (!Object.hasOwn(AIRPORT_CENTERS, airport)) {
+    return res.status(400).json({
+      error: "Unsupported or missing airport. Supported airports: KSFO, EGLL, VIDP, OMDB, KJFK, RJTT."
+    });
+  }
+
+  const center = AIRPORT_CENTERS[airport];
+  const aircraft = [...aircraftById.values()].filter(
+    (item) =>
+      item.hasPosition &&
+      item.latitude != null &&
+      item.longitude != null &&
+      distanceNm(center, { latitude: item.latitude, longitude: item.longitude }) <= 100
+  );
+  const flights = buildDemoFlights(aircraft, airport);
+
+  res.json({
+    airport,
+    source: "OpenSky Network",
+    generatedAt: new Date().toISOString(),
+    coverage: bounds,
+    dataQuality: "MIXED_ACTUAL_AND_DEMO",
+    flightQueueAvailable: flights.length >= 2,
+    estimatedFields: [
+      "acType",
+      "wakeClass",
+      "opType",
+      "runway",
+      "arrivalMinutes",
+      "icaoSepNm"
+    ],
+    flights,
+    crosswind_kts: null,
+    aircraft
+  });
+});
+
+app.post("/api/atc-agent", (req, res) => {
+  try {
+    res.json(createAtcAgentResponse(req.body));
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/api/weather", async (req, res, next) => {
+  const airport = String(req.query.airport || "").toUpperCase();
+  if (!/^[A-Z]{4}$/.test(airport)) {
+    return res.status(400).json({ error: "airport must be a four-letter ICAO code." });
+  }
+
+  try {
+    const url = new URL("https://aviationweather.gov/api/data/metar");
+    url.searchParams.set("ids", airport);
+    url.searchParams.set("format", "json");
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) {
+      return res.status(502).json({ error: `Aviation Weather upstream returned HTTP ${response.status}.` });
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data)) {
+      return res.status(502).json({ error: "Aviation Weather returned an unexpected response." });
+    }
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
 });
 
 app.get("/api/config", (_req, res) => {

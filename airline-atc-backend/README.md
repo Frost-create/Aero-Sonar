@@ -41,7 +41,26 @@ Useful endpoints:
 
 - `GET /health` - backend and upstream status
 - `GET /api/aircraft` - latest aircraft snapshot
+- `GET /api/live-flights?airport=KSFO` - OpenSky aircraft near the requested airport and flight-queue availability
+- `POST /api/atc-agent` - deterministic simulation-only advisory for the supplied pair
+- `GET /api/weather?airport=KSFO` - Aviation Weather METAR response
 - `GET /api/config` - units, poll interval, and geographic bounds
+
+`/api/live-flights` returns tracked OpenSky aircraft in its `aircraft` property and a demo flight queue in `flights`. Callsign and groundspeed come from observed data when available. Aircraft type, wake category, operation type, runway, arrival time, and separation value are stable pseudo-random demo values per aircraft and airport; each flight has `isEstimated: true` and `estimatedFields` to identify them. The response has `dataQuality: "MIXED_ACTUAL_AND_DEMO"`. These values are for visualization only and must not be used for real-world separation, clearance, navigation, or control.
+
+`/api/atc-agent` is a deterministic demonstration heuristic, not a Gemini integration or operational advice. It accepts JSON fields `lead_category`, `follower_category` (`SUPER`, `HEAVY`, or `MEDIUM`), `separation_nm`, `crosswind_kts`, and `offline_edge_mode`. Do not use its offsets for real-world separation or control.
+
+Example request:
+
+```json
+{
+  "lead_category": "SUPER",
+  "follower_category": "MEDIUM",
+  "separation_nm": 4.1,
+  "crosswind_kts": 4.2,
+  "offline_edge_mode": false
+}
+```
 
 ## 3. Connect React
 

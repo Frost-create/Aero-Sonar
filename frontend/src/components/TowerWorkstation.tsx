@@ -9,6 +9,13 @@ interface Props {
   selectedLeadId: string;
   selectedFollowingId: string;
   crosswindKts: number;
+  weather: {
+    wdir: number | null;
+    wspd: number | null;
+    wgst: number | null;
+    altim: number | null;
+    fltCat: string | null;
+  } | null;
   telemetry: WakeTelemetry;
   lightMode: boolean;
   onUpdateArrivalTime: (callsign: string, newMinutes: number) => void;
@@ -25,6 +32,7 @@ export default function TowerWorkstation({
   selectedLeadId,
   selectedFollowingId,
   crosswindKts,
+  weather,
   telemetry,
   lightMode,
   onUpdateArrivalTime,
@@ -37,9 +45,12 @@ export default function TowerWorkstation({
   const spec = AIRPORTS[airport];
   const rwyAlt = spec.runway.endsWith('R') ? spec.runway.replace('R', 'L') : spec.runway.replace('L', 'R');
 
-  const windDir = spec.runwayHeading + 45 > 360 ? spec.runwayHeading - 45 : spec.runwayHeading + 45;
-  const totalWind = Math.max(4, Math.round(crosswindKts * 1.4));
-  const gustWind = totalWind + 6;
+  const fallbackWindDir = spec.runwayHeading + 45 > 360 ? spec.runwayHeading - 45 : spec.runwayHeading + 45;
+  const windDir = weather?.wdir ?? fallbackWindDir;
+  const totalWind = weather?.wspd ?? Math.max(4, Math.round(crosswindKts * 1.4));
+  const gustText = weather?.wgst == null ? '' : `G${weather.wgst}`;
+  const altimeterInHg = weather?.altim == null ? '—' : (weather.altim / 33.8639).toFixed(2);
+  const flightCategory = weather?.fltCat ?? (weather ? 'NO REPORT' : 'DEMO');
   const gateHoldActive = telemetry.riskCategory === 'CRITICAL';
 
   const getPairResult = (f1: string, f2: string) =>
@@ -58,20 +69,20 @@ export default function TowerWorkstation({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
         <div className={`lg:col-span-3 border rounded-lg p-2.5 flex items-center justify-between ${lightMode ? 'bg-slate-100 border-amber-500/60' : 'bg-black border-amber-500/40'}`}>
           <div>
-            <span className="text-[10px] text-slate-400 block">ATIS INFO</span>
-            <span className="text-3xl font-black text-amber-500 leading-none">Z</span>
+            <span className="text-[10px] text-slate-400 block">METAR</span>
+            <span className="text-3xl font-black text-amber-500 leading-none">{weather ? 'LIVE' : 'DEMO'}</span>
           </div>
           <div className="text-right">
             <span className="text-[10px] text-slate-400 block">{spec.code} ATCT-GC</span>
-            <span className="text-lg font-extrabold text-amber-400">30.11</span>
-            <span className="text-[10px] text-emerald-500 block">CAT I / VMC</span>
+            <span className="text-lg font-extrabold text-amber-400">{altimeterInHg}</span>
+            <span className="text-[10px] text-emerald-500 block">{flightCategory}</span>
           </div>
         </div>
 
         <div className={`lg:col-span-5 border rounded-lg p-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] ${lightMode ? 'bg-slate-100 border-slate-300' : 'bg-black border-slate-800'}`}>
           <div className="flex justify-between">
             <span className="text-amber-400 font-bold">{spec.runway}A:</span>
-            <span>{String(windDir).padStart(3, '0')}° {totalWind}G{gustWind}</span>
+            <span>{String(windDir).padStart(3, '0')}° {totalWind}{gustText}KT</span>
           </div>
           <div className="flex justify-between">
             <span className="text-amber-400 font-bold">{rwyAlt}A:</span>
@@ -79,7 +90,7 @@ export default function TowerWorkstation({
           </div>
           <div className="flex justify-between">
             <span className="text-cyan-400 font-bold">01LD:</span>
-            <span>{String(windDir).padStart(3, '0')}° {Math.max(3, totalWind - 4)}KT</span>
+            <span>{String(windDir).padStart(3, '0')}° {totalWind}KT</span>
           </div>
           <div className="flex justify-between">
             <span className="text-cyan-400 font-bold">X-WIND:</span>
@@ -114,6 +125,15 @@ export default function TowerWorkstation({
           </div>
         </div>
       </div>
+
+      {flights.some((flight) => flight.isEstimated) && (
+        <div
+          className="rounded border border-amber-500/60 bg-amber-500/10 px-2.5 py-1.5 text-[10px] font-bold text-amber-300"
+          role="status"
+        >
+          DEMO ENRICHMENT: aircraft type, wake class, operation, runway, ETA, and separation are estimated. Not for operational use.
+        </div>
+      )}
 
       {/* Switcher Bar: Arrival Sequence Timeline vs Pairwise Aircraft Conflict Matrix */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
@@ -179,6 +199,14 @@ export default function TowerWorkstation({
                     )}
                     <span className="font-black text-xs">{flight.callsign}</span>
                     <span className="text-[10px] text-slate-400">{flight.acType}</span>
+                    {flight.isEstimated && (
+                      <span
+                        className="rounded bg-amber-500/20 px-1 text-[9px] font-bold text-amber-300"
+                        title={`Estimated: ${flight.estimatedFields?.join(', ') || 'flight metadata'}`}
+                      >
+                        DEMO
+                      </span>
+                    )}
                   </div>
 
                   {/* Sequence Reorder Buttons */}
