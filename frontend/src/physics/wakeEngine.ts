@@ -29,6 +29,8 @@ export interface FlightRecord {
   arrivalMinutes: number; // Scheduled arrival/departure offset in minutes from now
   speedKts: number;
   icaoSepNm: number;
+  isEstimated?: boolean;
+  estimatedFields?: string[];
 }
 
 export interface SimulationParams {
