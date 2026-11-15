@@ -514,48 +514,6 @@ export default function App() {
 
               {feedMode === 'SIM' ? (
                 <>
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-400 flex items-center gap-1"><Wind className="w-3.5 h-3.5 text-cyan-400" /> Wind Direction (360°)</span>
-                      <span className="font-mono text-sky-400 font-bold">{String(params.windDirectionDeg ?? 20).padStart(3, "0")}°</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={359}
-                      step={5}
-                      value={params.windDirectionDeg ?? 20}
-                      onChange={(e) => {
-                        const deg = parseFloat(e.target.value);
-                        const rwyHdg = AIRPORTS[params.airport].runwayHeading;
-                        const xw = Math.round(Math.abs((params.windSpeedKts ?? 10) * Math.sin(((deg - rwyHdg) * Math.PI) / 180)) * 10) / 10;
-                        setAgentResponse(null);
-                        setParams({ ...params, windDirectionDeg: deg, crosswindKts: xw });
-                      }}
-                      className="w-full accent-sky-400"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-400">Wind Speed (360° Vector)</span>
-                      <span className="font-mono text-cyan-400 font-bold">{(params.windSpeedKts ?? 10).toFixed(1)} kts</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={35}
-                      step={0.5}
-                      value={params.windSpeedKts ?? 10}
-                      onChange={(e) => {
-                        const spd = parseFloat(e.target.value);
-                        const rwyHdg = AIRPORTS[params.airport].runwayHeading;
-                        const xw = Math.round(Math.abs(spd * Math.sin((((params.windDirectionDeg ?? 20) - rwyHdg) * Math.PI) / 180)) * 10) / 10;
-                        setAgentResponse(null);
-                        setParams({ ...params, windSpeedKts: spd, crosswindKts: xw });
-                      }}
-                      className="w-full accent-cyan-400"
-                    />
                   </div>
 
                   <div>
@@ -581,8 +539,6 @@ export default function App() {
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-400">CPA Separation Threshold</span>
                       <span className="font-mono text-amber-400">{params.trajectoryThresholdNm.toFixed(1)} NM</span>
-                    </div>
-                    <input type="range" min={2.0} max={6.0} step={0.2} value={params.trajectoryThresholdNm} onChange={(e) => { setAgentResponse(null); setParams({ ...params, trajectoryThresholdNm: parseFloat(e.target.value) }); }} className="w-full accent-amber-400" />
                   </div>
                     <input type="range" min={2.0} max={6.0} step={0.2} value={params.trajectoryThresholdNm} onChange={(e) => { setAgentResponse(null); setParams({ ...params, trajectoryThresholdNm: parseFloat(e.target.value) }); }} className="w-full accent-amber-400" />
                   </div>
