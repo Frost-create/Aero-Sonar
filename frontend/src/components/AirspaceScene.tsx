@@ -74,6 +74,7 @@ function WindParticles({ signedCrosswindKts, headwindKts, isPlaying }: { signedC
 const WAKE_PARTICLE_COUNT = 4000;
 const METERS_TO_SCENE_UNITS = 0.05;
 const WAKE_DECAY_TAU_SEC = 45;
+const WAKE_WIND_STRETCH_AGE_SEC = 8;
 const AIR_DENSITY_KG_M3 = 1.225;
 
 function burnhamHallockVelocity(gamma: number, coreRadius: number, radius: number) {
@@ -87,6 +88,7 @@ function WakeParticleField({
   telemetry,
   aircraftScale,
   ambientCrosswindY,
+  ambientWindAlongRunway,
   trailLength,
   isPlaying,
 }: {
@@ -95,6 +97,7 @@ function WakeParticleField({
   telemetry: WakeTelemetry;
   aircraftScale: number;
   ambientCrosswindY: number;
+  ambientWindAlongRunway: number;
   trailLength: number;
   isPlaying: boolean;
 }) {
@@ -148,20 +151,18 @@ function WakeParticleField({
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
+    const windAge = Math.min(wakeAge, WAKE_WIND_STRETCH_AGE_SEC);
 
     for (let i = 0; i < WAKE_PARTICLE_COUNT; i++) {
       const particle = particles[i];
-      const age = Math.min(
-        particle.trailFraction * wakeAge,
-        Math.abs(aircraft.ambientCrosswindY) > 0
-          ? 70 / Math.abs(aircraft.ambientCrosswindY)
-          : wakeAge
-      );
+      const age = particle.trailFraction * wakeAge;
       const gamma = gamma0 * Math.exp(-age / WAKE_DECAY_TAU_SEC);
       const sinkDistance =
         (gamma0 * WAKE_DECAY_TAU_SEC * (1 - Math.exp(-age / WAKE_DECAY_TAU_SEC))) /
         (2 * Math.PI * b0);
-      const crosswindOffsetM = aircraft.ambientCrosswindY * age;
+      const centeredWindAge = particle.trailFraction * windAge - windAge / 2;
+      const crosswindOffsetM = aircraft.ambientCrosswindY * centeredWindAge;
+      const runwayOffsetM = ambientWindAlongRunway * centeredWindAge;
       const leftCoreX =
         leadPosition[0] - (b0 / 2) * METERS_TO_SCENE_UNITS + crosswindOffsetM * METERS_TO_SCENE_UNITS;
       const rightCoreX =
@@ -176,7 +177,10 @@ function WakeParticleField({
 
       const x = coreX + Math.cos(phase) * radius * METERS_TO_SCENE_UNITS;
       const y = coreY + Math.sin(phase) * radius * METERS_TO_SCENE_UNITS;
-      const z = leadPosition[2] + particle.trailFraction * trailLength;
+      const z =
+        leadPosition[2] +
+        particle.trailFraction * trailLength +
+        runwayOffsetM * METERS_TO_SCENE_UNITS;
       const index = i * 3;
       positionsRef.current[index] = x;
       positionsRef.current[index + 1] = y;
@@ -449,8 +453,10 @@ function AnimatedAirspace({
   }, [leadFlight, airportSpec.runway, simTick]);
 
   const wakeTrailLength = Math.min(5.2, Math.max(2.8, telemetry.separationNm * 1.1));
-  const ambientCrosswindY =
-    (params.crosswindKts * Math.sin(((params.windAngleDeg ?? 90) * Math.PI) / 180) * 0.514444);
+  const windAngleRad = ((params.windAngleDeg ?? 90) * Math.PI) / 180;
+  const windSpeedMps = params.crosswindKts * 0.514444;
+  const ambientCrosswindY = windSpeedMps * Math.sin(windAngleRad);
+  const ambientWindAlongRunway = windSpeedMps * Math.cos(windAngleRad);
 
   const { leftPoints, rightPoints } = useMemo(() => {
     const lPts: [number, number, number][] = [];
@@ -573,6 +579,7 @@ function AnimatedAirspace({
           telemetry={telemetry}
           aircraftScale={params.aircraftScale}
           ambientCrosswindY={ambientCrosswindY}
+          ambientWindAlongRunway={ambientWindAlongRunway}
           trailLength={wakeTrailLength}
           isPlaying={params.isPlaying}
         />
