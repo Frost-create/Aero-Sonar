@@ -31,6 +31,12 @@ When an aircraft takes off, it generates powerful, invisible spiraling wind vort
 * **Actionable Insights:** Analyzes current simulation variables—including aircraft weight, wind speed, crosswind direction, and separation distance—to generate specialized safety briefings on whether a trailing aircraft is at risk of encountering hazardous wake turbulence.
 
 ---
+## Team
+* **Angelina Di Saia** (https://github.com/Frost-create) — Frontend & UI/UX
+* **Neola Pinto** (https://github.com/neolapinto) — Frontend & UI/UX
+* **Mahii Shah** (https://github.com/mahiishah-code) — Frontend & UI/UX
+*  **Siddhesh Kukade** (https://github.com/SiddheshKukade) - Backend and Code Mentor
+---
 # Aero-Sonar Frontend
 # React + TypeScript + Vite
 
